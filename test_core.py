@@ -3,7 +3,7 @@
 Covers the logic that silently rots: filters, travel time, dedupe, and the
 full scrape->match path against a fake adapter.
 """
-import json, time, sys, tempfile, shutil
+import json, time, sys, tempfile, shutil, pathlib
 from pathlib import Path
 
 import config, db
@@ -1416,6 +1416,30 @@ def test_cli_login_never_touches_credentials():
     for forbidden in ("keychain", "security find", ".credentials.json", "password"):
         assert forbidden not in src.lower(), f"cli_login reaches for {forbidden}"
     assert "auth login" in src, "login must go through the CLI's own flow"
+
+def test_layout_holds_on_a_phone():
+    """Regressions here are invisible on a laptop and ruin the app on a phone."""
+    import app, re
+    css = (pathlib.Path("static") / "app.css").read_text()
+    # sticky <th> silently stops working in Safari with border-collapse:collapse
+    assert "border-collapse:separate" in css, "sticky headers will break in Safari"
+    # under 16px, iOS Safari zooms into the field on tap and never zooms back
+    assert "font-size:16px" in css, "form fields will trigger iOS zoom"
+    assert "@media(hover:hover)" in css, "hover styles stick after a tap on touch"
+    assert css.count("@media(min-width") >= 2, "breakpoints are not mobile-first"
+    assert "max-width:639px" in css, "no stacked layout for narrow screens"
+
+    c = app.app.test_client()
+    html = c.get("/").get_data(as_text=True)
+    # the nav must not depend on <details>: closed, it hides its own content
+    # via content-visibility, which no portable author CSS can undo
+    assert "<details" not in html, "nav menu is back on <details>"
+    assert 'id="navtoggle"' in html and 'for="navtoggle"' in html, \
+        "no CSS-only way to open the menu"
+    # every table needs a real thead, or the header row becomes a stray card
+    for page in ("/catalogue?tab=annonces", "/catalogue?tab=produits", "/favoris"):
+        h = c.get(page).get_data(as_text=True)
+        assert h.count("<table") <= h.count("<thead>"), f"{page}: table without thead"
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

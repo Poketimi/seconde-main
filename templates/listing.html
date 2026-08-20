@@ -158,7 +158,8 @@
 {% if similar %}
 <h2>Même produit, ailleurs</h2>
 <div class="tablewrap"><table>
-  <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th><th class="nowrap">Source</th></tr>
+  <thead>
+  <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th><th class="nowrap">Source</th></tr></thead>
   {% for o in similar %}<tr>
     <td class="main"><a href="{{ url_for('listing', lid=o.id) }}"><span class="trunc">{{ o|tr }}</span></a></td>
     <td class="num">{{ o.price|money(o.currency) }}</td>

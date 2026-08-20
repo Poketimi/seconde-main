@@ -11,8 +11,9 @@ informations ne servent qu'à construire les critères de recherche.</p>
 {% else %}
 <div class="tablewrap">
 <table>
+  <thead>
   <tr><th>Information</th><th>Valeur</th><th class="nowrap">Portée</th>
-      <th class="nowrap">Mise à jour</th><th></th></tr>
+      <th class="nowrap">Mise à jour</th><th></th></tr></thead>
   {% for f in facts %}
   <tr>
     <td class="main">{{ f.label }}<div class="faint">{{ f.k }}</div></td>
@@ -51,8 +52,9 @@ informations ne servent qu'à construire les critères de recherche.</p>
 {% if calls %}
 <div class="tablewrap">
 <table>
+  <thead>
   <tr><th class="nowrap">Quand</th><th>Modèle</th><th>Usage</th>
-      <th class="num">Entrée</th><th class="num">Sortie</th><th class="num">Coût</th></tr>
+      <th class="num">Entrée</th><th class="num">Sortie</th><th class="num">Coût</th></tr></thead>
   {% for c in calls %}<tr>
     <td class="nowrap faint">{{ c.ts|ago }}</td><td class="dim">{{ c.model }}</td>
     <td class="dim">{{ c.purpose }}</td>

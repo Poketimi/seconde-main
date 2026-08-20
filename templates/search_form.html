@@ -23,7 +23,8 @@
     ses URL sont de mémoire. Ceux dont le domaine n'existe pas ont été retirés.
     Ces sites ne sont pas scannés automatiquement — c'est une piste à ouvrir à la main.</p>
   <table>
-    <tr><th>Site</th><th>Pourquoi</th><th class="nowrap">Vérification</th><th></th></tr>
+    <thead>
+  <tr><th>Site</th><th>Pourquoi</th><th class="nowrap">Vérification</th><th></th></tr></thead>
     {% for m in leads %}
     <tr>
       <td class="nowrap"><b>{{ m.name }}</b> <span class="faint">{{ m.country }}</span></td>

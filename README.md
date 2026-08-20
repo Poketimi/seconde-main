@@ -220,6 +220,33 @@ fausses pour ta région, c'est là que ça se règle.
 
 ---
 
+## Interface
+
+Conçue pour le téléphone d'abord : les styles de base visent un petit écran, les points de
+rupture sont tous en `min-width`, et les grands écrans ajoutent des colonnes plutôt que de
+corriger. Sur téléphone la barre du haut tient sur **une** rangée — marque, bouton, menu —
+là où les huit onglets en occupaient trois, et les tableaux d'annonces deviennent des
+cartes empilées : en tableau il fallait défiler horizontalement pour voir le prix.
+
+Les écarts entre navigateurs viennent surtout de Safari, et sont corrigés à la source :
+
+- `border-collapse:separate` — avec `collapse`, Safari n'applique **pas** `position:sticky`
+  à un `<th>` et l'en-tête part au défilement ;
+- `appearance:none` sur boutons et listes déroulantes, dont Safari ignore une partie du
+  style, avec une flèche redessinée ;
+- champs à **16 px** : en dessous, Safari iOS zoome sur le champ au tap et ne redézoome
+  jamais ;
+- bague de focus en `box-shadow` plutôt qu'`outline`, dont Safari ne suit pas toujours le
+  `border-radius` ;
+- styles de survol sous `@media(hover:hover)`, sinon l'état reste collé après un tap ;
+- pas de `<details>` pour le menu : replié, il masque son contenu par `content-visibility`,
+  que ni `display:contents` ni aucune règle d'auteur portable ne peut annuler — les onglets
+  disparaissaient sur grand écran. Une case à cocher masquée fait le même travail, en CSS
+  pur, partout pareil.
+
+Un test vérifie ces points, plus le fait qu'aucune page ne déborde horizontalement en
+375 px de large.
+
 ## Mot de passe
 
 L'app est **ouverte par défaut** : elle écoute sur `127.0.0.1`. Créer un compte dans

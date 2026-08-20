@@ -68,8 +68,9 @@
 <h2>Derniers matchs</h2>
 <div class="tablewrap">
 <table>
+  <thead>
   <tr><th></th><th>Annonce</th><th class="num">Prix</th><th class="nowrap">Trajet</th>
-      <th class="nowrap">Source</th><th class="nowrap">Recherche</th><th></th></tr>
+      <th class="nowrap">Source</th><th class="nowrap">Recherche</th><th></th></tr></thead>
   {% for r in recent %}
   <tr>
     <td>{% if r.image %}<img src="{{ r.image }}" class="thumb" alt="">{% endif %}</td>

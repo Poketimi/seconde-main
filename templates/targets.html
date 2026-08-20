@@ -10,7 +10,8 @@
 
 <div class="tablewrap">
 <table>
-  <tr><th>Modèle</th><th>Pourquoi</th><th class="num">Annonces</th><th class="nowrap">État</th><th></th></tr>
+  <thead>
+  <tr><th>Modèle</th><th>Pourquoi</th><th class="num">Annonces</th><th class="nowrap">État</th><th></th></tr></thead>
   {% for t in rows %}
   <tr {{ 'style=opacity:.5' if not t.active }}>
     <td class="main"><b>{{ t.name }}</b></td>

@@ -14,10 +14,11 @@ L'app ne voit jamais tes identifiants et ne résout aucun contrôle de sécurit�
   <div class="flash">{{ login_state.site }} : {{ login_state.message }}</div>
 {% endif %}
 
-<div class="tablewrap">
+<div class="tablewrap keep">
 <table>
+  <thead>
   <tr><th>Site</th><th class="nowrap">Accès</th><th class="nowrap">État</th><th>Détail</th>
-      <th class="nowrap">Dernier OK</th><th></th></tr>
+      <th class="nowrap">Dernier OK</th><th></th></tr></thead>
   {% for r in rows %}
   <tr>
     <td class="nowrap"><b>{{ r.name }}</b></td>
@@ -49,9 +50,10 @@ L'app ne voit jamais tes identifiants et ne résout aucun contrôle de sécurit�
 </div>
 
 <h2>Ce que veulent dire les états</h2>
-<div class="tablewrap">
+<div class="tablewrap keep">
 <table>
-  <tr><th class="nowrap">État</th><th>Signification</th></tr>
+  <thead>
+  <tr><th class="nowrap">État</th><th>Signification</th></tr></thead>
   <tr><td class="nowrap"><span class="pill ok"><i class="dot"></i>OK</span></td><td class="dim">Annonces récupérées.</td></tr>
   <tr><td class="nowrap"><span class="pill empty"><i class="dot"></i>aucun résultat</span></td>
       <td class="dim">Le site a répondu mais rien n'a été extrait : rupture de stock, ou l'adaptateur ne sait pas lire cette page.</td></tr>

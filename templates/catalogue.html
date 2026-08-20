@@ -17,8 +17,9 @@ les statistiques de prix disent tout de suite si une annonce est une bonne affai
 {% if tab == 'produits' %}
   <div class="tablewrap">
   <table>
-    <tr><th>Produit</th><th class="nowrap">Marque</th><th class="nowrap">Catégorie</th>
-        <th class="num">Annonces</th><th class="num">P25</th><th class="num">Médiane</th><th class="num">P75</th></tr>
+    <thead>
+  <tr><th>Produit</th><th class="nowrap">Marque</th><th class="nowrap">Catégorie</th>
+        <th class="num">Annonces</th><th class="num">P25</th><th class="num">Médiane</th><th class="num">P75</th></tr></thead>
     {% for p in products %}
     <tr>
       <td class="main"><a href="{{ url_for('product', pid=p.id) }}"><span class="trunc">{{ p.canonical_name }}</span></a></td>
@@ -36,8 +37,9 @@ les statistiques de prix disent tout de suite si une annonce est une bonne affai
 {% else %}
   <div class="tablewrap">
   <table>
-    <tr><th></th><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th>
-        <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr>
+    <thead>
+  <tr><th></th><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th>
+        <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr></thead>
     {% for l in listings %}
     <tr>
       <td>{% if l.image %}<img src="{{ l.image }}" class="thumb" alt="">{% endif %}</td>

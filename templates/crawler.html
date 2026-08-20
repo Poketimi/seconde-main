@@ -8,9 +8,10 @@ il reste bloqué.</p>
 <div class="strip"><span class="label">Identité</span><code>{{ ua }}</code></div>
 
 <h2>Domaines</h2>
-<div class="tablewrap"><table>
+<div class="tablewrap keep"><table>
+  <thead>
   <tr><th>Domaine</th><th class="nowrap">robots.txt</th><th class="num">Délai</th>
-      <th class="num">Sitemaps</th><th class="nowrap">État</th><th>Note</th></tr>
+      <th class="num">Sitemaps</th><th class="nowrap">État</th><th>Note</th></tr></thead>
   {% for d in doms %}
   <tr>
     <td class="nowrap"><b>{{ d.domain }}</b></td>
@@ -29,8 +30,9 @@ il reste bloqué.</p>
 
 {% if denied %}
 <h2>Sites qui refusent ce robot</h2>
-<div class="tablewrap"><table>
-  <tr><th>Site</th><th>Raison</th></tr>
+<div class="tablewrap keep"><table>
+  <thead>
+  <tr><th>Site</th><th>Raison</th></tr></thead>
   {% for k, v in denied.items() %}
   <tr><td class="nowrap"><b>{{ k }}</b></td><td class="dim">{{ v }}</td></tr>
   {% endfor %}
@@ -43,9 +45,10 @@ autorisation, il suffira de la brancher ici.</p>
 <h2>Journal des requêtes</h2>
 <p class="dim">Tout ce que le robot a demandé, dans l'ordre. Délai minimum imposé :
 {{ min_delay|round|int }}s par domaine, plus le <code>crawl-delay</code> du site s'il est plus long.</p>
-<div class="tablewrap"><table>
+<div class="tablewrap keep"><table>
+  <thead>
   <tr><th class="nowrap">Quand</th><th class="nowrap">Code</th><th class="num">Taille</th>
-      <th class="nowrap">Cache</th><th>URL</th><th>Note</th></tr>
+      <th class="nowrap">Cache</th><th>URL</th><th>Note</th></tr></thead>
   {% for r in log %}
   <tr>
     <td class="nowrap faint">{{ r.ts|ago }}</td>

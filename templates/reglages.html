@@ -187,7 +187,8 @@ redémarrer : le changement s'applique à la requête suivante.</p>
   marché au lieu de s'arrêter.</p>
 {% if recent %}
 <div class="tablewrap"><table>
-  <tr><th class="nowrap">Quand</th><th>Modèle</th><th>Usage</th><th class="num">Coût</th></tr>
+  <thead>
+  <tr><th class="nowrap">Quand</th><th>Modèle</th><th>Usage</th><th class="num">Coût</th></tr></thead>
   {% for c in recent %}<tr>
     <td class="nowrap faint">{{ c.ts|ago }}</td><td class="dim">{{ c.model }}</td>
     <td class="dim">{{ c.purpose }}</td><td class="num">{{ '%.5f'|format(c.cost_usd) }} $</td>

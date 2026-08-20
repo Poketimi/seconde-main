@@ -80,8 +80,9 @@
 <h2>Journal des scans</h2>
 <div class="tablewrap">
 <table>
+  <thead>
   <tr><th class="nowrap">Quand</th><th class="nowrap">Site</th><th class="num">Trouvé</th>
-      <th class="num">Nouveau</th><th>Note</th></tr>
+      <th class="num">Nouveau</th><th>Note</th></tr></thead>
   {% for l in log %}<tr><td class="nowrap faint">{{ l.ts|ago }}</td><td class="nowrap">{{ l.source }}</td>
     <td class="num">{{ l.found }}</td><td class="num">{{ l.new }}</td><td class="dim">{{ l.note }}</td></tr>{% endfor %}
 </table>

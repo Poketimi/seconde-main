@@ -53,8 +53,9 @@
 {% if hist %}
 <details><summary class="faint">Voir les chiffres</summary>
 <div class="tablewrap"><table>
+  <thead>
   <tr><th>Jour</th><th class="num">Annonces</th><th class="num">P25</th>
-      <th class="num">Médiane</th><th class="num">P75</th></tr>
+      <th class="num">Médiane</th><th class="num">P75</th></tr></thead>
   {% for d in hist|reverse %}<tr><td class="nowrap">{{ d.day }}</td><td class="num">{{ d.n }}</td>
     <td class="num dim">{{ d.p25|round|int }}</td><td class="num"><b>{{ d.median|round|int }}</b></td>
     <td class="num dim">{{ d.p75|round|int }}</td></tr>{% endfor %}
@@ -72,8 +73,9 @@
 <h2>Annonces</h2>
 <div class="tablewrap">
 <table>
+  <thead>
   <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Statut</th><th class="nowrap">État</th><th class="nowrap">Lieu</th>
-      <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr>
+      <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr></thead>
   {% for l in rows %}<tr>
     <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l|tr }}</span></a></td>
     <td class="num">{{ l.price|money(l.currency) }}</td>
