@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 68 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 71 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -137,6 +137,18 @@ Seul OpenRouter publie son solde (`/credits`, affiché sur la page). Ailleurs la
 déclenche au premier appel refusé. Le registre `ai_spend` ne suffit pas : il ne compte que
 le modèle d'entretien, et annonçait 0,36 $ dépensés quand le compte en avait consommé 0,82 $.
 
+### Connexions
+
+L'onglet **Connexions** rassemble tout ce à quoi l'app doit être reliée — comptes d'IA,
+abonnement Claude Code, sessions de sites — avec l'état de chacun et un bouton pour le
+réparer. Une session expirée s'y voit et s'y répare sans ligne de commande : le bouton
+ouvre une fenêtre Terminal sur `claude auth login`, tu te connectes dans ton navigateur, et
+la page se met à jour toute seule quand c'est fait.
+
+L'app n'y touche à aucun identifiant : elle ouvre la porte, la connexion se fait dans ta
+fenêtre et ton navigateur, exactement comme le bouton de session Facebook. Un test vérifie
+que `cli_login` ne va lire ni trousseau ni fichier d'identifiants.
+
 ### Abonnement Claude Code
 
 Si le binaire `claude` est installé, l'entretien de l'assistant peut passer par `claude -p`,
@@ -239,7 +251,7 @@ automatique ne reçoive pas une page de connexion.
 | `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
 | `reference.py` | prix neuf de référence |
 | `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
-| `test_core.py` | 68 suites, sans réseau |
+| `test_core.py` | 71 suites, sans réseau |
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.

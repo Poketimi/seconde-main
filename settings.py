@@ -122,8 +122,9 @@ def connect(which, key=""):
         txt, why = ai._cli_chat("Réponds en JSON.", 'Renvoie {"ok":true}',
                                 config.CLAUDE_CLI_MODEL, timeout=90)
         if not txt:
-            return False, (f"Activé, mais `claude` a répondu : {why}. "
-                           f"Lance `claude` dans un terminal pour te reconnecter.")
+            return False, (f"Activé, mais la session Claude a expiré. "
+                           f"Va dans Connexions et clique « Se connecter » — "
+                           f"tout se fait depuis l'app. ({why[:60]})")
         return True, "Abonnement Claude Code branché pour l'entretien de l'assistant."
     if which not in config.PROVIDERS:
         return False, "Service inconnu."

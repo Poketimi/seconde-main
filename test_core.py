@@ -1380,6 +1380,43 @@ def test_settings_page_lists_every_provider():
         if not meta.get("local"):
             assert meta["key_url"] in html, f"no link to get a {p} key"
 
+def test_connections_dashboard_offers_a_fix():
+    """An expired session must be visible and repairable without a terminal."""
+    import app
+    real_auth, real_which = ai.cli_auth, ai.shutil.which
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    try:
+        ai.shutil.which = lambda n: "/fake/claude"
+        ai.cli_auth = lambda: {"loggedIn": False, "authMethod": "none"}
+        html = app.app.test_client().get("/connexions").get_data(as_text=True)
+        assert "session expirée" in html, "expired session not surfaced"
+        assert url_for_login(app) in html, "no button to repair it"
+
+        ai.cli_auth = lambda: {"loggedIn": True, "authMethod": "claudeai"}
+        config.CLAUDE_CLI = True
+        html = app.app.test_client().get("/connexions").get_data(as_text=True)
+        assert "session expirée" not in html and "actif" in html, \
+            "still shown as broken once logged in"
+
+        st = app.app.test_client().get("/api/connexions").get_json()
+        assert st["cli_logged"] is True, "poller cannot see the session came back"
+    finally:
+        ai.cli_auth, ai.shutil.which = real_auth, real_which
+        _restore_ai(saved)
+
+def url_for_login(app):
+    with app.app.test_request_context():
+        from flask import url_for
+        return url_for("connexions_claude")
+
+def test_cli_login_never_touches_credentials():
+    """The app opens the door; it must not read or carry any secret."""
+    import inspect
+    src = inspect.getsource(ai.cli_login)
+    for forbidden in ("keychain", "security find", ".credentials.json", "password"):
+        assert forbidden not in src.lower(), f"cli_login reaches for {forbidden}"
+    assert "auth login" in src, "login must go through the CLI's own flow"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

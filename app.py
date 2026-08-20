@@ -844,6 +844,71 @@ def sources_page():
                            login_state=browser.LOGIN_STATE,
                            playwright=browser.available())
 
+@app.route("/connexions")
+def connexions():
+    """Une page qui répond à « qu'est-ce qui est branché, et qu'est-ce qui ne l'est pas ».
+
+    Les connexions vivaient à trois endroits : la clé d'IA dans Réglages, les
+    sessions de sites dans Sources, l'abonnement nulle part. Quand une session
+    expire il faut un seul endroit où le voir et un seul bouton pour réparer.
+    """
+    auth_cli = ai.cli_auth()
+    cards = [{
+        "id": "claude_cli", "titre": "Abonnement Claude Code",
+        "quoi": "Fait tourner l'entretien de l'assistant sur ton abonnement, "
+                "sans clé d'API ni budget entamé.",
+        "present": ai.cli_available(),
+        "ok": bool(auth_cli and auth_cli.get("loggedIn")) and config.CLAUDE_CLI,
+        "etat": ("session expirée" if auth_cli and not auth_cli.get("loggedIn")
+                 else "actif" if config.CLAUDE_CLI else "installé, non activé")
+                if ai.cli_available() else "binaire `claude` absent",
+        "action": "cli_login", "bouton": "Se connecter",
+        "aide": "Une fenêtre Terminal s'ouvre et te connecte à ton compte. "
+                "Cette page se met à jour toute seule quand c'est fait.",
+    }]
+    for t in ai.tier_status():
+        if t["provider"].startswith("claude_cli"):
+            continue
+        cards.append({
+            "id": t["name"], "titre": f"Compte {t['name']} — {t['provider']}",
+            "quoi": f"Modèle : {t['model']}",
+            "present": True, "ok": t["live"],
+            "etat": "en service" if t["live"]
+                    else f"en pause {max(1, t['retry_in'] // 60)} min",
+            "lien": url_for("reglages"), "bouton": "Régler",
+            "aide": "Une clé refusée ou un compte vide met le compte de côté "
+                    "un quart d'heure ; le suivant prend le relais.",
+        })
+    sites = []
+    for name in sources.NEEDS_BROWSER:
+        sess = browser.session_info(SITE_DOMAINS.get(name, name))
+        sites.append({"name": name, "session": sess,
+                      "login_url": LOGIN_URLS.get(name)})
+    return render_template("connexions.html", cards=cards, sites=sites,
+                           cli_login=ai.CLI_LOGIN, credit=ai.credit(),
+                           login_state=browser.LOGIN_STATE,
+                           playwright=browser.available())
+
+@app.post("/connexions/claude")
+def connexions_claude():
+    if not ai.cli_login():
+        flash("✗ " + (ai.CLI_LOGIN.get("message") or "impossible d'ouvrir la connexion"))
+    else:
+        settings.save({"CLAUDE_CLI": "1"})
+        flash("Fenêtre Terminal ouverte — connecte-toi, la page se mettra à jour seule.")
+    return redirect(url_for("connexions"))
+
+@app.get("/api/connexions")
+def api_connexions():
+    """Sondage : dit à la page quand une connexion aboutit."""
+    ai.cli_login_done()
+    st = ai.cli_auth() or {}
+    return jsonify({"cli_logged": bool(st.get("loggedIn")),
+                    "cli_running": ai.CLI_LOGIN["running"],
+                    "cli_message": ai.CLI_LOGIN["message"],
+                    "login_running": bool(browser.LOGIN_STATE.get("running")),
+                    "login_message": browser.LOGIN_STATE.get("message") or ""})
+
 @app.post("/sources/<name>/login")
 def source_login(name):
     target = LOGIN_URLS.get(name)

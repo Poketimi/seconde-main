@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% block title %}Connexions{% endblock %}{% block body %}
+<h1>Connexions</h1>
+<p class="sub">Tout ce à quoi l'app doit être reliée, et l'état de chaque lien. Quand une
+session expire, c'est ici que ça se voit et que ça se répare.</p>
+
+<div class="connect">
+  {% for c in cards %}
+  <div class="ccard {{ 'here' if c.ok }}">
+    <div class="ctitle">{{ c.titre }}
+      <span class="pill {{ 'ok' if c.ok else ('empty' if c.present else 'blocked') }}">
+        <i class="dot"></i>{{ c.etat }}</span></div>
+    <p class="faint">{{ c.quoi }}</p>
+    {% if c.id == 'claude_cli' and c.present and not c.ok %}
+      <form method="post" action="{{ url_for('connexions_claude') }}">
+        <button class="cta" {{ 'disabled' if cli_login.running }}>
+          {{ 'Connexion en cours…' if cli_login.running else c.bouton }}</button>
+      </form>
+      <p class="faint">{{ c.aide }}</p>
+      {% if cli_login.message %}<p class="faint"><b>{{ cli_login.message }}</b></p>{% endif %}
+    {% elif c.lien %}
+      <a class="btn" href="{{ c.lien }}">{{ c.bouton }}</a>
+      <p class="faint">{{ c.aide }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% for s in sites %}
+  <div class="ccard {{ 'here' if s.session.logged_in }}">
+    <div class="ctitle">{{ s.name }}
+      <span class="pill {{ 'ok' if s.session.logged_in else 'login' }}"><i class="dot"></i>
+        {{ 'connecté' if s.session.logged_in else 'session à ouvrir' }}</span></div>
+    <p class="faint">Ce site n'accepte que des visites depuis un compte connecté. Le scan
+      utilise ton propre profil de navigateur.</p>
+    {% if playwright %}
+      <form method="post" action="{{ url_for('source_login', name=s.name) }}">
+        <button class="{{ 'cta' if not s.session.logged_in }}"
+                {{ 'disabled' if login_state.running }}>
+          {{ 'Fenêtre ouverte…' if login_state.running else 'Ouvrir la session' }}</button>
+      </form>
+    {% else %}
+      <p class="faint">Playwright n'est pas installé :
+        <code>pip install playwright &amp;&amp; playwright install chromium</code></p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if credit is not none %}
+<div class="strip">
+  <span class="label">Crédit</span>
+  <span class="pill {{ 'blocked' if credit <= 0.05 else 'ok' }}"><i class="dot"></i>
+    {{ '%.2f'|format(credit) }} $ restants</span>
+  <a class="chip" href="{{ url_for('reglages') }}">brancher un autre service →</a>
+</div>
+{% endif %}
+
+<script>
+// La connexion se termine dans une autre fenêtre : sans ça, il faudrait
+// recharger à la main pour savoir si elle a marché.
+(function () {
+  let was = null;
+  async function tick() {
+    try {
+      const s = await (await fetch('{{ url_for("api_connexions") }}',
+                                   {cache: 'no-store'})).json();
+      const now = JSON.stringify([s.cli_logged, s.cli_running, s.login_running]);
+      if (was !== null && was !== now) { location.reload(); return; }
+      was = now;
+    } catch (e) { /* serveur qui redémarre */ }
+  }
+  tick();
+  setInterval(tick, 2500);
+})();
+</script>
+{% endblock %}

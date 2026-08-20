@@ -57,6 +57,67 @@ CLI_TIMEOUT = 180
 def cli_available():
     return bool(shutil.which("claude"))
 
+CLI_LOGIN = {"running": False, "message": "", "started": 0.0}
+
+def cli_auth():
+    """État de la session `claude` : {loggedIn, authMethod, ...} ou None.
+
+    C'est `claude auth status`, qui répond déjà en JSON. Rien n'est lu dans le
+    trousseau : on demande au binaire, il répond ce qu'il veut bien dire.
+    """
+    exe = shutil.which("claude")
+    if not exe:
+        return None
+    try:
+        r = subprocess.run([exe, "auth", "status"], capture_output=True,
+                           text=True, timeout=20)
+        return json.loads(r.stdout)
+    except Exception:
+        return None
+
+def cli_login():
+    """Ouvre une fenêtre Terminal sur `claude auth login`.
+
+    La connexion se fait dans TA fenêtre et TON navigateur : l'app ne voit ni
+    ne manipule aucun identifiant, elle se contente d'ouvrir la porte. Même
+    principe que le bouton de connexion Facebook.
+
+    Passer par un petit script évite d'échapper quoi que ce soit vers
+    AppleScript, et donc toute la classe de bugs de guillemets qui va avec.
+    """
+    exe = shutil.which("claude")
+    if not exe:
+        CLI_LOGIN.update(running=False, message="binaire `claude` introuvable")
+        return False
+    path = config.ROOT / "data" / "claude-login.command"
+    path.write_text("#!/bin/sh\n"
+                    "echo 'Connexion à ton compte Claude — suis les instructions,'\n"
+                    "echo 'puis reviens sur Seconde Main : la page se mettra à jour seule.'\n"
+                    "echo\n"
+                    f"exec {exe} auth login --claudeai\n")
+    path.chmod(0o755)
+    try:
+        subprocess.Popen(["open", "-a", "Terminal", str(path)])
+    except Exception as e:
+        CLI_LOGIN.update(running=False, message=f"impossible d'ouvrir Terminal : {e}")
+        return False
+    _tier_down.pop("abonnement", None)      # on retente dès que la session revient
+    CLI_LOGIN.update(running=True, started=time.time(),
+                     message="fenêtre Terminal ouverte — connecte-toi puis reviens ici")
+    return True
+
+def cli_login_done():
+    """Appelé par le sondage : la fenêtre a-t-elle abouti ?"""
+    if not CLI_LOGIN["running"]:
+        return False
+    st = cli_auth() or {}
+    if st.get("loggedIn"):
+        CLI_LOGIN.update(running=False, message="connecté")
+        return True
+    if time.time() - CLI_LOGIN["started"] > 600:
+        CLI_LOGIN.update(running=False, message="abandon après 10 min")
+    return False
+
 def _cli_chat(system, user, model, timeout=CLI_TIMEOUT):
     """Un appel via `claude -p`. Retourne (texte, usage) ou (None, raison).
 
