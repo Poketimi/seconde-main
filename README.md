@@ -133,6 +133,25 @@ page ne la réaffiche jamais (seulement `sk-or-v1…4f21`). Elle est stockée en
 `data/market.db`, sur ta machine, exactement comme `.env` l'était — « Oublier la clé »
 la retire et rend la main à `.env`.
 
+### Ton abonnement Claude Code
+
+Si le binaire `claude` est installé, `/reglages` peut faire passer **l'entretien de
+l'assistant** par `claude -p`, le mode non interactif prévu pour être scripté. Les appels
+partent alors sur ton **abonnement** : ni clé d'API, ni plafond entamé.
+
+Ce n'est pas le jeton OAuth de Claude Code recyclé en clé d'API — c'est le binaire lancé
+tel quel. Le texte des annonces arrive par `stdin`, jamais dans la ligne de commande, et
+`--allowedTools ""` coupe tous les outils : le processus ne peut ni lire ni écrire de
+fichier, quoi que contienne l'annonce.
+
+**Uniquement l'entretien**, délibérément : 2 appels par recherche passent sans problème,
+mais le tri et la traduction en font des centaines par jour. Les y envoyer taperait dans
+les limites de débit de l'abonnement en quelques minutes, et chaque appel coûte un
+processus complet (~3 s) contre ~1,3 s en direct. Le travail en masse reste donc sur la
+clé d'API. Si la session `claude` a expiré — `claude` dans un terminal pour se
+reconnecter — l'app le dit, met l'abonnement de côté un quart d'heure et repart sur la
+clé : rien ne casse.
+
 ### Deux comptes, bascule automatique
 
 Le bloc « compte de repli » de `/reglages` prend un **second** service avec sa propre clé et

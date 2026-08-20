@@ -401,6 +401,8 @@ def reglages():
     """Ton fournisseur, ta clé, tes modèles. Rien ici n'exige de redémarrer."""
     if request.method == "POST":
         vals = {k: request.form.get(k, "") for k in settings.FIELDS}
+        # une case décochée n'est pas envoyée : sans ça on ne pourrait plus l'éteindre
+        vals["CLAUDE_CLI"] = "1" if request.form.get("CLAUDE_CLI") else "0"
         # changer de fournisseur sans toucher au reste : reprendre ses défauts
         prov = (vals.get("AI_PROVIDER") or "").strip().lower()
         if prov and prov != config.AI_PROVIDER and prov in config.PROVIDERS:
@@ -420,6 +422,7 @@ def reglages():
                            providers=config.PROVIDERS, smart=config.PROVIDER_SMART,
                            spent=ai.spend_since(), left=ai.budget_left(),
                            credit=ai.credit(), tiers=ai.tier_status(),
+                           cli_found=ai.cli_available(),
                            recent=db.q("""SELECT model, purpose, cost_usd, ts FROM ai_spend
                                           ORDER BY ts DESC LIMIT 8"""))
 

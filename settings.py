@@ -15,13 +15,17 @@ import db, config
 FIELDS = ("AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY",
           "SMART_MODEL", "SMART_BUDGET_USD",
           # compte de repli, utilisé quand le principal n'a plus de jetons
-          "ALT_PROVIDER", "ALT_BASE_URL", "ALT_MODEL", "ALT_API_KEY")
+          "ALT_PROVIDER", "ALT_BASE_URL", "ALT_MODEL", "ALT_API_KEY",
+          # abonnement Claude Code, entretien de l'assistant uniquement
+          "CLAUDE_CLI", "CLAUDE_CLI_MODEL")
 SECRET = ("AI_API_KEY", "ALT_API_KEY")
 
 def stored():
     return {r["k"]: r["v"] for r in db.q("SELECT k,v FROM settings")}
 
 def _coerce(k, v):
+    if k == "CLAUDE_CLI":
+        return str(v).strip() in ("1", "true", "on", "oui")
     if k == "SMART_BUDGET_USD":
         try:
             return float(str(v).replace(",", "."))
@@ -33,7 +37,7 @@ def _coerce(k, v):
 def apply(values):
     """Écrit ces réglages sur `config`. Une valeur vide ne remplace rien."""
     for k, v in values.items():
-        if k not in FIELDS or v is None or v == "":
+        if k not in FIELDS or v is None or (v == "" and k != "CLAUDE_CLI"):
             continue
         v = _coerce(k, v)
         if v is None or v == "":
@@ -49,7 +53,7 @@ def load():
 def save(values):
     now = time.time()
     for k, v in values.items():
-        if k not in FIELDS or v is None or v == "":
+        if k not in FIELDS or v is None or (v == "" and k != "CLAUDE_CLI"):
             continue          # champ laissé vide = on garde l'ancienne valeur
         if _coerce(k, v) in (None, ""):
             continue
@@ -78,6 +82,8 @@ def current():
             "ALT_BASE_URL": config.ALT_BASE_URL,
             "ALT_MODEL": config.ALT_MODEL,
             "ALT_API_KEY": masked(config.ALT_API_KEY),
+            "CLAUDE_CLI": config.CLAUDE_CLI,
+            "CLAUDE_CLI_MODEL": config.CLAUDE_CLI_MODEL,
             "from_db": sorted(stored().keys())}
 
 def probe():
@@ -106,6 +112,11 @@ def demo():
     assert _coerce("ALT_BASE_URL", "https://y/v1/") == "https://y/v1"
     assert _coerce("SMART_BUDGET_USD", "12,5") == 12.5
     assert _coerce("SMART_BUDGET_USD", "abc") is None
+    assert _coerce("CLAUDE_CLI", "1") is True and _coerce("CLAUDE_CLI", "0") is False
+    save({"CLAUDE_CLI": "1"}); assert config.CLAUDE_CLI is True
+    save({"CLAUDE_CLI": "0"}); assert config.CLAUDE_CLI is False, \
+        "une case décochée doit pouvoir éteindre l'option"
+    db.run("DELETE FROM settings WHERE k='CLAUDE_CLI'")
     before = config.AI_MODEL
     apply({"AI_MODEL": "", "AI_PROVIDER": "openai"})
     assert config.AI_MODEL == before, "un champ vide ne doit rien écraser"

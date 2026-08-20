@@ -13,7 +13,7 @@ SECURITY: listing text is untrusted scraped input. It is only ever classified;
 model output is parsed as JSON and written to DB columns, never executed, and
 never used to build a URL or a shell command.
 """
-import json, hashlib, re, time
+import json, hashlib, re, time, shutil, subprocess
 from concurrent.futures import ThreadPoolExecutor
 import db, config, net
 
@@ -46,15 +46,66 @@ def _slug(*parts):
     s = re.sub(r"[^\w\s-]", "", s.lower())
     return re.sub(r"[\s_-]+", "-", s).strip("-")[:120]
 
+# --- Claude Code en local, sous ton abonnement -----------------------------
+# Pas la clé OAuth de Claude Code réutilisée comme clé d'API : le binaire est
+# lancé tel quel, en mode `claude -p`, qui est fait pour être scripté. Les
+# appels passent donc par ton abonnement et ne touchent pas au budget.
+#
+# Réservé à l'entretien de l'assistant (2 appels par recherche). Le tri et la
+# traduction en font des centaines par jour : les envoyer par là ferait tomber
+# l'abonnement sur ses limites de débit en quelques minutes, et chaque appel
+# coûte un processus complet (~3 s) contre ~1,3 s en direct.
+CLI_TIMEOUT = 180
+
+def cli_available():
+    return bool(shutil.which("claude"))
+
+def _cli_chat(system, user, model, timeout=CLI_TIMEOUT):
+    """Un appel via `claude -p`. Retourne (texte, usage) ou (None, raison).
+
+    Le texte des annonces arrive par stdin, jamais dans la ligne de commande,
+    et tous les outils sont coupés : ce processus ne peut ni lire ni écrire de
+    fichier, quoi que contienne l'annonce.
+    """
+    exe = shutil.which("claude")
+    if not exe:
+        return None, "binaire `claude` introuvable"
+    cmd = [exe, "-p", "--allowedTools", "", "--output-format", "json"]
+    if model:
+        cmd += ["--model", model]
+    try:
+        r = subprocess.run(cmd, input=f"{system}\n\n---\n\n{user}",
+                           capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, f"pas de réponse en {timeout}s"
+    except Exception as e:
+        return None, str(e)
+    try:
+        out = json.loads(r.stdout)
+    except Exception:
+        return None, (r.stderr or r.stdout or "sortie illisible")[:200]
+    if out.get("is_error") or out.get("subtype") != "success":
+        return None, str(out.get("result") or out.get("subtype"))[:200]
+    return out.get("result"), (out.get("usage") or {})
+
 # Un compte à court de jetons répond 401/402/429. Le noter évite de reperdre un
 # aller-retour à chaque appel : on file directement sur le compte de repli.
 _tier_down = {}
 TIER_COOLDOWN = 900         # 15 min
 DRY = (401, 402, 403, 429)  # clé refusée, plus de crédit, quota épuisé
 
-def tiers():
-    """Les comptes utilisables, principal d'abord, celui en panne exclu."""
+def tiers(cli_ok=False):
+    """Les comptes utilisables, dans l'ordre, celui en panne exclu.
+
+    `cli_ok` ouvre l'abonnement Claude Code, qui passe devant les autres :
+    il ne consomme aucun crédit. Il reste fermé par défaut pour que le travail
+    en masse ne parte jamais dedans.
+    """
     out = []
+    if cli_ok and config.CLAUDE_CLI and cli_available() \
+            and time.time() >= _tier_down.get("abonnement", 0):
+        out.append({"name": "abonnement", "provider": "claude_cli", "base": "cli",
+                    "key": "", "model": config.CLAUDE_CLI_MODEL})
     for name, prov, base, key, model in (
             ("principal", config.AI_PROVIDER, config.AI_BASE_URL,
              config.AI_API_KEY, config.AI_MODEL),
@@ -70,14 +121,18 @@ def tiers():
 
 def tier_status():
     """Pour l'interface : quel compte sert, et lequel est en pause."""
-    live = {t["name"] for t in tiers()}
+    live = {t["name"] for t in tiers(cli_ok=True)}
+    rows = [("principal", config.AI_PROVIDER, config.AI_MODEL),
+            ("repli", config.ALT_PROVIDER, config.ALT_MODEL)]
+    if config.CLAUDE_CLI:
+        rows.insert(0, ("abonnement", "claude_cli (assistant seulement)",
+                        config.CLAUDE_CLI_MODEL))
     return [{"name": n, "provider": p, "model": m, "live": n in live,
              "retry_in": max(0, int(_tier_down.get(n, 0) - time.time()))}
-            for n, p, m in (("principal", config.AI_PROVIDER, config.AI_MODEL),
-                            ("repli", config.ALT_PROVIDER, config.ALT_MODEL))
-            if p]
+            for n, p, m in rows if p]
 
-def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=None):
+def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=None,
+         cli=False):
     """Cached chat completion. Returns text, or None if unavailable/failed.
 
     `models` overrides the fallback chain (used by smart_chat for the
@@ -97,7 +152,24 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
     if not available():
         return None
     seen, r, used = [], None, None
-    for tier in tiers():
+    for tier in tiers(cli_ok=cli):
+        if tier["provider"] == "claude_cli":
+            txt, info = _cli_chat(system, user, tier["model"])
+            if txt:
+                if on_usage:
+                    try:
+                        on_usage(f"claude-code/{tier['model']}", {})
+                    except Exception:
+                        pass
+                db.run("INSERT OR REPLACE INTO ai_cache(k,v,created_at) VALUES(?,?,?)",
+                       (key, txt, time.time()))
+                return txt
+            seen.append(f"abonnement={info}")
+            # session expirée ou limite atteinte : inutile de réessayer à chaque appel
+            _tier_down["abonnement"] = time.time() + TIER_COOLDOWN
+            print(f"  [ia] abonnement Claude Code indisponible ({info}) — "
+                  f"repli sur la clé d'API")
+            continue
         # le compte de repli a son propre modèle : la chaîne du principal ne
         # veut rien dire chez lui
         want = dict.fromkeys(chain if tier["name"] == "principal" else [tier["model"]])
@@ -389,7 +461,7 @@ def smart_chat(system, user, purpose, max_tokens=6000):
         print(f"  [ia] crédit {config.AI_PROVIDER} épuisé — repli sur {config.AI_MODEL}")
     elif over:
         print(f"  [ia] plafond {config.SMART_BUDGET_USD}$ atteint — repli sur {config.AI_MODEL}")
-    return chat(system, user, models=chain, max_tokens=max_tokens,
+    return chat(system, user, models=chain, max_tokens=max_tokens, cli=True,
                 on_usage=lambda m, u: record_spend(m, u, purpose)), over
 
 # --- the interview ---------------------------------------------------------

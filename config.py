@@ -86,6 +86,15 @@ _abase, _amodel = PROVIDERS.get(ALT_PROVIDER, ("", ""))
 ALT_API_KEY  = os.environ.get("ALT_API_KEY", "").strip()
 ALT_BASE_URL = os.environ.get("ALT_BASE_URL", _abase).rstrip("/")
 ALT_MODEL    = os.environ.get("ALT_MODEL", _amodel)
+
+# --- abonnement Claude Code -------------------------------------------
+# Lance le binaire `claude -p` déjà installé sur la machine : les appels
+# passent par ton abonnement, pas par une clé d'API, et ne coûtent rien au
+# budget. Réservé à l'entretien de l'assistant (2 appels par recherche) --
+# le tri et la traduction en font des centaines par jour et taperaient dans
+# les limites de débit de l'abonnement en quelques minutes.
+CLAUDE_CLI = os.environ.get("CLAUDE_CLI", "0") == "1"
+CLAUDE_CLI_MODEL = os.environ.get("CLAUDE_CLI_MODEL", "claude-sonnet-5")
 GEOCODER_EMAIL = os.environ.get("GEOCODER_EMAIL", "anonymous@example.com")
 
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", 1800))  # 30 min

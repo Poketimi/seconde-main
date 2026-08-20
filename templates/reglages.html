@@ -60,6 +60,28 @@ redémarrer : le changement s'applique à la requête suivante.</p>
   </fieldset>
 
   <fieldset>
+    <legend>Abonnement Claude Code <span class="faint">— facultatif</span></legend>
+    {% if cli_found %}
+    <label class="inline">
+      <input type="checkbox" name="CLAUDE_CLI" value="1" {{ 'checked' if cur.CLAUDE_CLI }}>
+      Faire passer l'entretien de l'assistant par <code>claude -p</code></label>
+    <label>Modèle
+      <input name="CLAUDE_CLI_MODEL" value="{{ cur.CLAUDE_CLI_MODEL }}" autocomplete="off"
+             style="max-width:22rem"></label>
+    <p class="faint">Lance le binaire <code>claude</code> déjà installé sur cette machine.
+      Les appels passent par <b>ton abonnement</b> et ne touchent ni à ta clé d'API ni au
+      plafond. <b>Uniquement l'entretien</b> (2 appels par recherche) : le tri et la
+      traduction en font des centaines par jour, ils tomberaient aussitôt sur les limites de
+      débit de l'abonnement, et chaque appel coûte un processus entier (~3 s) contre ~1,3 s
+      en direct. Si la session <code>claude</code> a expiré, l'app le dit, met l'abonnement
+      de côté un quart d'heure et repart sur la clé d'API — rien ne casse.</p>
+    {% else %}
+    <p class="faint">Le binaire <code>claude</code> n'est pas sur cette machine, donc cette
+      option est indisponible.</p>
+    {% endif %}
+  </fieldset>
+
+  <fieldset>
     <legend>Compte de repli <span class="faint">— facultatif</span></legend>
     <p class="faint">Quand le compte principal n'a plus de jetons, l'app bascule ici toute
       seule et continue, au lieu de retomber sur le tri par mots-clés. Le compte épuisé est

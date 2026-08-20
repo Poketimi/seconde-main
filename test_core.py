@@ -1189,7 +1189,8 @@ def test_smart_model_steps_down_when_the_account_is_empty():
     saved = {k: getattr(config, k) for k in settings.FIELDS}
     real_chat, real_credit = ai.chat, ai.credit
     seen = {}
-    def spy(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=None):
+    def spy(system, user, temperature=0.0, max_tokens=8000, models=None,
+            on_usage=None, cli=False):
         seen["chain"] = list(models or [])
         return None
     try:
@@ -1299,6 +1300,50 @@ def test_second_account_takes_over_when_the_first_is_dry():
         ai._tier_down.clear()
         db.run("DELETE FROM ai_cache")
         _restore_ai(saved)
+
+def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
+    """The subscription must never carry bulk work, and must not break anything."""
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    real_cli, real_which = ai._cli_chat, ai.shutil.which
+    ai._tier_down.clear()
+    try:
+        config.CLAUDE_CLI = True
+        ai.shutil.which = lambda n: "/fake/claude"
+
+        # bulk work must not see it, however it is configured
+        assert "abonnement" not in [t["name"] for t in ai.tiers()], \
+            "bulk calls would go through the subscription and hit its rate limits"
+        assert "abonnement" == ai.tiers(cli_ok=True)[0]["name"], \
+            "the assistant should prefer the subscription: it costs no credit"
+
+        # switched off, it disappears entirely
+        config.CLAUDE_CLI = False
+        assert "abonnement" not in [t["name"] for t in ai.tiers(cli_ok=True)]
+        config.CLAUDE_CLI = True
+
+        # an expired session parks it and falls through to the API key
+        ai._cli_chat = lambda *a, **k: (None, "OAuth session expired")
+        db.run("DELETE FROM ai_cache")
+        calls = []
+        real_post = ai.net.post_json
+        class R:
+            status_code = 200
+            def json(self):
+                return {"choices": [{"message": {"content": '{"ok":1}'}}], "usage": {}}
+        ai.net.post_json = lambda u, b, headers=None, timeout=None: (calls.append(u), R())[1]
+        try:
+            assert ai.chat("s", "u", cli=True) == '{"ok":1}', "no fallback after expiry"
+            assert calls, "the API key was never tried"
+            assert ai._tier_down.get("abonnement", 0) > time.time(), \
+                "expired subscription retried on every call"
+        finally:
+            ai.net.post_json = real_post
+    finally:
+        ai._cli_chat, ai.shutil.which = real_cli, real_which
+        ai._tier_down.clear()
+        db.run("DELETE FROM ai_cache")
+        _restore_ai(saved)
+        config.CLAUDE_CLI = saved.get("CLAUDE_CLI", False)
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
