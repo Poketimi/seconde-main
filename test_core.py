@@ -1441,6 +1441,21 @@ def test_layout_holds_on_a_phone():
         h = c.get(page).get_data(as_text=True)
         assert h.count("<table") <= h.count("<thead>"), f"{page}: table without thead"
 
+def test_crawler_page_never_calls_a_refused_site_active():
+    """The audit page must not claim to crawl a site we refuse on principle."""
+    import app
+    html = app.app.test_client().get("/crawler").get_data(as_text=True)
+    top = html[:html.index("Sites qui refusent")] if "Sites qui refusent" in html else html
+    for dom in ("www.leboncoin.fr", "www.autoscout24.ch"):
+        i = top.find(dom)
+        assert i > 0, f"{dom} missing from the domain table"
+        row = top[i:i + 900]
+        assert "refusé" in row, f"{dom} is shown as crawlable on the audit page"
+        assert ">actif<" not in row, f"{dom} still reads as actif"
+    # and a site we really do crawl must still say so
+    i = top.find("www.tutti.ch")
+    assert "actif" in top[i:i + 900], "tutti should be active"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -16,11 +16,18 @@ il reste bloqué.</p>
   <tr>
     <td class="nowrap"><b>{{ d.domain }}</b></td>
     <td class="nowrap dim">{{ d.robots }}</td>
-    <td class="num">{{ d.delay|round|int }}s</td>
-    <td class="num">{{ d.sitemaps }}</td>
+    <td class="num">{{ (d.delay|round|int|string ~ 's') if d.delay else '—' }}</td>
+    <td class="num">{{ d.sitemaps if d.sitemaps is not none else '—' }}</td>
     <td class="nowrap">
-      {% if d.denied_min > 0 %}<span class="pill blocked"><i class="dot"></i>en retrait {{ d.denied_min|round|int }}min</span>
-      {% else %}<span class="pill ok"><i class="dot"></i>actif</span>{% endif %}
+      {% if d.etat == 'refusé' %}
+        <span class="pill blocked"><i class="dot"></i>refusé — jamais visité</span>
+      {% elif d.etat == 'en pause' %}
+        <span class="pill login"><i class="dot"></i>en retrait {{ d.denied_min|round|int }}min</span>
+      {% elif d.etat == 'actif' %}
+        <span class="pill ok"><i class="dot"></i>actif</span>
+      {% else %}
+        <span class="pill empty"><i class="dot"></i>jamais visité</span>
+      {% endif %}
       {% if d.streak %}<span class="faint"> ×{{ d.streak }}</span>{% endif %}
     </td>
     <td class="dim"><span class="trunc">{{ d.note }}</span></td>

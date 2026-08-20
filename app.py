@@ -802,19 +802,36 @@ def crawler_page():
     Published so a site operator (or you) can audit the behaviour and block it
     if they want to.
     """
+    # Le domaine appartient-il à un site qu'on a décidé de ne pas crawler ?
+    site_of = {v: k for k, v in SITE_DOMAINS.items()}
     doms = []
     for d in ("www.ricardo.ch", "www.anibis.ch", "www.tutti.ch",
               "www.leboncoin.fr", "www.autoscout24.ch"):
         st = crawler.state(d)
         rp = crawler.robots(d)
+        site = site_of.get(d.replace("www.", ""), "")
+        ok, why = crawler.policy(d)
+        refused = site in sources.DENIED_BY_OPERATOR or not ok
+        # "actif" ne voulait dire que « aucune pause HTTP en cours ». Un site
+        # qu'on ne visite jamais n'accumule aucun refus, donc leboncoin et
+        # autoscout24 s'affichaient actifs sur la page censée dire la vérité
+        # sur ce que ce robot fait. L'état part maintenant de la règle, pas
+        # du compteur.
+        etat = ("refusé" if refused
+                else "en pause" if crawler.denied_for(d) > 0
+                else "actif" if (st and st["last_fetch"]) else "jamais visité")
         doms.append({
             "domain": d,
             "robots": "lu" if rp is not None else "illisible",
-            "delay": crawler.crawl_delay(d),
-            "sitemaps": len(crawler.sitemaps(d)),
+            "delay": crawler.crawl_delay(d) if not refused else None,
+            # afficher un nombre de sitemaps pour un site refusé laissait
+            # croire qu'on comptait s'en servir
+            "sitemaps": len(crawler.sitemaps(d)) if not refused else None,
+            "etat": etat,
+            "refused": refused,
             "denied_min": crawler.denied_for(d) / 60,
             "streak": (st["deny_streak"] if st else 0),
-            "note": (st["note"] if st else "") or "",
+            "note": (why if refused else (st["note"] if st else "")) or "",
             "last": (st["last_fetch"] if st else None),
         })
     return render_template("crawler.html", ua=crawler.USER_AGENT, doms=doms,
