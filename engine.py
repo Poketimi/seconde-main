@@ -475,7 +475,7 @@ def _run_search(s, ai_budget=None):
                " VALUES(?,?,?,?,?,?,?,?,?)",
                (s["id"], lid, tid,
                 100.0 if tname else keyword_score(d, s),
-                f"modèle {tname}" if tname else "analyse en cours…",
+                f"modèle {tname}" if tname else PENDING,
                 mins, label, mode, time.time()))
         total_matched += 1
 
@@ -483,9 +483,41 @@ def _run_search(s, ai_budget=None):
     # accessories keyword matching let through.
     req = (f"{s['query']} | ref={s['reference'] or '-'} | "
            f"budget={s['price_min']}-{s['price_max']}")
-    verdicts = ai.analyse([c[1] for c in all_candidates], req, budget=ai_budget)
+    total_matched += judge(s, all_candidates, req, ai_budget)
 
-    for k, (lid, d, mins, label, mode, tid, tname) in enumerate(all_candidates):
+    db.run("UPDATE searches SET last_run=? WHERE id=?", (time.time(), s["id"]))
+
+    fresh = db.q("SELECT m.id, l.title, l.price, l.currency, m.travel_minutes, m.travel_origin"
+                 " FROM matches m JOIN listings l ON l.id=m.listing_id"
+                 " WHERE m.search_id=? AND m.notified=0 ORDER BY m.score DESC", (s["id"],))
+    if fresh:
+        top = fresh[0]
+        where = f" · {top['travel_minutes']:.0f}min de {top['travel_origin']}" \
+                if top["travel_minutes"] is not None else ""
+        notify(f"{len(fresh)} nouveau(x) · {s['name']}",
+               f"{top['title'][:60]} — {top['price']} {top['currency']}{where}",
+               url=f"http://localhost:5055/search/{s['id']}?sort=new")
+        db.run("UPDATE matches SET notified=1 WHERE search_id=? AND notified=0", (s["id"],))
+    return total_new, total_matched
+
+PENDING = "analyse en cours…"
+
+def judge(s, candidates, req=None, ai_budget=None):
+    """Phase 2 : le vrai verdict sur des matchs provisoires. Delta de matchs.
+
+    Extraite du scan parce qu'un cycle interrompu laissait ses lignes en
+    « analyse en cours… » pour toujours : 139 des 271 matchs de la base
+    étaient dans cet état, dont un foil Armstrong dans une recherche de sac à
+    dos. `finish_pending` rappelle donc exactement ce code plus tard, au lieu
+    d'une seconde implémentation qui dériverait.
+    """
+    if not candidates:
+        return 0
+    req = req or (f"{s['query']} | ref={s['reference'] or '-'} | "
+                  f"budget={s['price_min']}-{s['price_max']}")
+    verdicts = ai.analyse([c[1] for c in candidates], req, budget=ai_budget)
+    delta_count = 0
+    for k, (lid, d, mins, label, mode, tid, tname) in enumerate(candidates):
         v = verdicts.get(k)
         if not v:
             if tname:
@@ -493,7 +525,7 @@ def _run_search(s, ai_budget=None):
                        (f"modèle {tname}", s["id"], lid))
             elif keyword_score(d, s) < 40:    # no AI: apply the keyword cut-off
                 db.run("DELETE FROM matches WHERE search_id=? AND listing_id=?", (s["id"], lid))
-                total_matched -= 1
+                delta_count -= 1
             else:
                 db.run("UPDATE matches SET reason=? WHERE search_id=? AND listing_id=?",
                        ("match par mots-clés", s["id"], lid))
@@ -511,32 +543,53 @@ def _run_search(s, ai_budget=None):
             score = max(score, 80.0)      # the exact model was matched by name
         if not v.get("is_item", True) or score < 40:
             db.run("DELETE FROM matches WHERE search_id=? AND listing_id=?", (s["id"], lid))
-            total_matched -= 1
+            delta_count -= 1
             continue
 
-        delta = None
+        deal = None
         if pid:
             pr = db.q("SELECT price_median FROM products WHERE id=?", (pid,), one=True)
             if pr and pr["price_median"] and d.get("price"):
-                delta = (d["price"] - pr["price_median"]) / pr["price_median"] * 100
+                deal = (d["price"] - pr["price_median"]) / pr["price_median"] * 100
         db.run("""UPDATE matches SET score=?, reason=?, deal_delta=?
                   WHERE search_id=? AND listing_id=?""",
-               (score, v.get("reason") or "", delta, s["id"], lid))
+               (score, v.get("reason") or "", deal, s["id"], lid))
+    return delta_count
 
-    db.run("UPDATE searches SET last_run=? WHERE id=?", (time.time(), s["id"]))
+def finish_pending(older_than=600, limit=200):
+    """Reprend les matchs laissés provisoires par un cycle interrompu.
 
-    fresh = db.q("SELECT m.id, l.title, l.price, l.currency, m.travel_minutes, m.travel_origin"
-                 " FROM matches m JOIN listings l ON l.id=m.listing_id"
-                 " WHERE m.search_id=? AND m.notified=0 ORDER BY m.score DESC", (s["id"],))
-    if fresh:
-        top = fresh[0]
-        where = f" · {top['travel_minutes']:.0f}min de {top['travel_origin']}" \
-                if top["travel_minutes"] is not None else ""
-        notify(f"{len(fresh)} nouveau(x) · {s['name']}",
-               f"{top['title'][:60]} — {top['price']} {top['currency']}{where}",
-               url=f"http://localhost:5055/search/{s['id']}?sort=new")
-        db.run("UPDATE matches SET notified=1 WHERE search_id=? AND notified=0", (s["id"],))
-    return total_new, total_matched
+    Redémarrer le serveur pendant un scan tuait la phase 2 : les lignes de la
+    phase 1 gardaient leur score mots-clés et la mention « analyse en cours… »
+    indéfiniment, affichée à l'utilisateur comme si un verdict était en route.
+    Ne juge que ce qui a eu le temps d'être abandonné, jamais un scan en cours.
+    """
+    rows = db.q("""SELECT m.search_id, m.listing_id, m.target_id, m.travel_minutes,
+                          m.travel_origin, m.travel_mode, t.name tname
+                   FROM matches m LEFT JOIN targets t ON t.id = m.target_id
+                   WHERE m.reason = ? AND m.created_at < ?
+                   ORDER BY m.created_at LIMIT ?""",
+                (PENDING, time.time() - older_than, limit))
+    if not rows:
+        return 0, 0
+    by_search = {}
+    for r in rows:
+        by_search.setdefault(r["search_id"], []).append(r)
+    seen = dropped = 0
+    for sid, group in by_search.items():
+        s = db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True)
+        if not s:
+            continue
+        cands = []
+        for r in group:
+            l = db.q("SELECT * FROM listings WHERE id=?", (r["listing_id"],), one=True)
+            if l:
+                cands.append((r["listing_id"], dict(l), r["travel_minutes"],
+                              r["travel_origin"], r["travel_mode"],
+                              r["target_id"], r["tname"]))
+        seen += len(cands)
+        dropped -= judge(s, cands)
+    return seen, dropped
 
 def enrich_backlog(limit=None):
     """Build product entries for every listing seen, matched or not.
@@ -599,6 +652,12 @@ def run_all():
         seen, wrote = i18n.backlog()
         if wrote:
             print(f"  [ia] {seen} annonces traduites ({wrote} versions)")
+    except Exception:
+        traceback.print_exc()
+    try:
+        n, dropped = finish_pending()
+        if n:
+            print(f"  [ia] {n} matchs restés provisoires jugés ({dropped} écartés)")
     except Exception:
         traceback.print_exc()
     return out

@@ -1547,6 +1547,54 @@ def test_ebay_only_asks_for_used_items():
     assert "conditions:{USED" in f, "new items would flood a second-hand monitor"
     assert "price:[100..500]" in f and "priceCurrency:CHF" in f, f
 
+def test_interrupted_scan_does_not_leave_matches_provisional():
+    """Phase 1 rows must not survive as "analyse en cours…" for ever.
+
+    Restarting mid-scan killed phase 2 and left keyword-scored rows on the
+    results page as though a verdict were still coming. 139 of 271 matches in
+    the real database were stuck that way -- including a hydrofoil in a
+    backpack search, matched on the single token "V2".
+    """
+    db.run("DELETE FROM matches")
+    db.run("DELETE FROM listings")
+    db.run("DELETE FROM searches")
+    sid = db.run("""INSERT INTO searches(name,query,origins,sources,shipping_ok,created_at)
+                    VALUES('sac à dos','Peak design 30l V2','[]','[]',1,?)""", (time.time(),))
+    junk = db.run("INSERT INTO listings(url,source,title,first_seen) VALUES(?,?,?,?)",
+                  ("https://x/foil", "fake", "Armstrong Foil CF2400 V2", time.time()))
+    good = db.run("INSERT INTO listings(url,source,title,first_seen) VALUES(?,?,?,?)",
+                  ("https://x/bag", "fake", "Peak Design Everyday Backpack 30L V2", time.time()))
+    old = time.time() - 3600
+    for lid in (junk, good):
+        db.run("""INSERT INTO matches(search_id,listing_id,score,reason,created_at)
+                  VALUES(?,?,?,?,?)""",
+               (sid, lid, engine.keyword_score(
+                   dict(db.q("SELECT * FROM listings WHERE id=?", (lid,), one=True)),
+                   db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True)),
+                engine.PENDING, old))
+
+    assert db.q("SELECT score FROM matches WHERE listing_id=?", (junk,),
+                one=True)["score"] < 40, "the foil should score badly on keywords"
+
+    real = ai.analyse
+    ai.analyse = lambda *a, **k: {}          # no AI: the keyword cut-off applies
+    try:
+        seen, dropped = engine.finish_pending(older_than=60)
+    finally:
+        ai.analyse = real
+    assert seen == 2, seen
+    assert dropped == 1, f"the foil should have been dropped, dropped={dropped}"
+    assert db.q("SELECT 1 FROM matches WHERE listing_id=?", (junk,), one=True) is None, \
+        "hydrofoil still matched to a backpack search"
+    kept = db.q("SELECT reason FROM matches WHERE listing_id=?", (good,), one=True)
+    assert kept and kept["reason"] != engine.PENDING, "real match left provisional"
+
+    # a scan still running must not be judged out from under itself
+    db.run("UPDATE matches SET reason=? , created_at=? WHERE listing_id=?",
+           (engine.PENDING, time.time(), good))
+    assert engine.finish_pending(older_than=600) == (0, 0), \
+        "a fresh phase-1 row was judged while its scan was still going"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

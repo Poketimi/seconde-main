@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 76 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 77 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -296,7 +296,7 @@ automatique ne reçoive pas une page de connexion.
 | `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
 | `reference.py` | prix neuf de référence |
 | `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
-| `test_core.py` | 76 suites, sans réseau |
+| `test_core.py` | 77 suites, sans réseau |
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.
@@ -314,6 +314,12 @@ colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.
   peuvent pas être filtrées par prix.
 - Les transports publics sont estimés par défaut, routés seulement quand
   `transport.opendata.ch` répond.
+- Un scan se fait en deux temps : la phase 1 écrit tout de suite chaque candidat avec un
+  score mots-clés, la phase 2 (`engine.judge`) le remplace par un vrai verdict. Si le
+  processus meurt entre les deux, `engine.finish_pending()` reprend au cycle suivant ce qui
+  est resté provisoire depuis plus de 10 min. C'est nécessaire : redémarrer pendant un scan
+  avait laissé **139 des 271 matchs** figés en « analyse en cours… », dont un foil Armstrong
+  dans une recherche de sac à dos — accroché au seul mot « V2 » de « Peak design 30l V2 ».
 - Scan séquentiel, mono-processus. À trois ou quatre recherches c'est instantané ; au-delà,
   il faudrait paralléliser par site.
 - La clé d'API est en clair dans `data/market.db`, sur ta machine — comme elle l'était dans
