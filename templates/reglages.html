@@ -1,0 +1,118 @@
+{% extends "base.html" %}{% block title %}Réglages IA{% endblock %}{% block body %}
+<h1>Modèles et clé</h1>
+<p class="sub">L'app parle à n'importe quel service compatible OpenAI. Tu peux donc
+utiliser <b>ton propre compte</b> — Anthropic, OpenAI, DeepSeek, un modèle local — et
+c'est ton fournisseur qui te facture, sans intermédiaire. Rien ici n'exige de
+redémarrer : le changement s'applique à la requête suivante.</p>
+
+<div class="strip">
+  <span class="label">Actuel</span>
+  <span class="chip">{{ cur.AI_PROVIDER }}</span>
+  <span class="chip">{{ cur.AI_MODEL }}</span>
+  <span class="chip">entretien : {{ cur.SMART_MODEL }}</span>
+  <span class="pill {{ 'ok' if cur.AI_API_KEY else 'blocked' }}"><i class="dot"></i>
+    {{ cur.AI_API_KEY or 'aucune clé' }}</span>
+</div>
+
+<form class="form" method="post" style="margin-top:1.1rem">
+  <fieldset>
+    <legend>Fournisseur</legend>
+    <label>Service
+      <select name="AI_PROVIDER" id="prov">
+        {% for p in providers %}
+        <option value="{{ p }}" {{ 'selected' if p == cur.AI_PROVIDER }}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="faint">En changer laisse les champs vides ci-dessous se remplir avec les
+      valeurs par défaut du service. <b>anthropic</b> et <b>openai</b> = ta clé du compte
+      correspondant ; <b>ollama</b> tourne en local et ne demande aucune clé.</p>
+    <label>Adresse de l'API
+      <input name="AI_BASE_URL" value="{{ cur.AI_BASE_URL }}" placeholder="https://…/v1">
+    </label>
+    <label>Clé
+      <input name="AI_API_KEY" type="password" autocomplete="off"
+             placeholder="{{ cur.AI_API_KEY or 'sk-…' }} — laisser vide pour garder l'actuelle">
+    </label>
+    <p class="faint">Elle est enregistrée en clair dans <code>data/market.db</code>, sur
+      cette machine, comme l'était <code>.env</code>. La page ne la réaffiche jamais.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Modèles</legend>
+    <label>Tri des annonces <span class="faint">— appelé des centaines de fois par jour,
+        prends-le petit et rapide</span>
+      <input name="AI_MODEL" value="{{ cur.AI_MODEL }}" list="models" autocomplete="off">
+    </label>
+    <label>Entretien de l'assistant <span class="faint">— 2 appels par nouvelle recherche,
+        c'est là qu'un bon modèle change le résultat</span>
+      <input name="SMART_MODEL" value="{{ cur.SMART_MODEL }}" list="models" autocomplete="off">
+    </label>
+    <datalist id="models"></datalist>
+    <p class="faint" id="modelnote">Chargement de la liste des modèles disponibles…</p>
+    <label>Plafond annuel du modèle d'entretien ($)
+      <input name="SMART_BUDGET_USD" value="{{ '%.2f'|format(cur.SMART_BUDGET_USD) }}"
+             inputmode="decimal" style="max-width:9rem">
+    </label>
+    <p class="faint">Au-delà, l'entretien retombe sur le modèle bon marché au lieu de
+      s'arrêter. Un modèle absent de la table de prix est estimé au tarif le plus cher,
+      pour qu'il compte quand même contre le plafond.</p>
+  </fieldset>
+
+  <div class="row">
+    <button class="cta" type="submit">Enregistrer</button>
+    <button type="submit" name="probe" value="1">Enregistrer et tester</button>
+  </div>
+</form>
+
+<h2>Dépense du modèle d'entretien</h2>
+<div class="strip">
+  <span class="label">Sur 365 jours</span>
+  <span class="pill {{ 'blocked' if left <= 0 else 'ok' }}"><i class="dot"></i>
+    {{ '%.3f'|format(spent) }} $ dépensés · {{ '%.2f'|format(left) }} $ restants</span>
+</div>
+{% if recent %}
+<div class="tablewrap"><table>
+  <tr><th class="nowrap">Quand</th><th>Modèle</th><th>Usage</th><th class="num">Coût</th></tr>
+  {% for c in recent %}<tr>
+    <td class="nowrap faint">{{ c.ts|ago }}</td><td class="dim">{{ c.model }}</td>
+    <td class="dim">{{ c.purpose }}</td><td class="num">{{ '%.5f'|format(c.cost_usd) }} $</td>
+  </tr>{% endfor %}
+</table></div>
+{% endif %}
+
+{% if cur.from_db %}
+<h2>Clé enregistrée</h2>
+<form method="post" action="{{ url_for('reglages_oubli') }}"
+      onsubmit="return confirm('Effacer la clé enregistrée ?')">
+  <button class="danger">Oublier la clé</button>
+  <span class="faint">Réglages venant de la base : {{ cur.from_db|join(', ') }}</span>
+</form>
+{% endif %}
+
+<script>
+// Remplir la liste avec les modèles que la clé actuelle atteint vraiment,
+// plutôt que de demander de taper un identifiant de mémoire.
+fetch('{{ url_for("api_models") }}').then(r => r.json()).then(d => {
+  const note = document.getElementById('modelnote');
+  if (!d.ok || !d.models.length) {
+    note.textContent = "Liste indisponible : clé refusée ou adresse incorrecte. " +
+      "Tu peux quand même taper l'identifiant du modèle à la main.";
+    return;
+  }
+  document.getElementById('models').innerHTML =
+    d.models.map(m => '<option value="' + m + '">').join('');
+  note.textContent = d.models.length + " modèles accessibles avec cette clé.";
+}).catch(() => {});
+
+// changer de service propose ses valeurs par défaut sans écraser un choix explicite
+const DEFAULTS = {{ providers|tojson }}, SMART = {{ smart|tojson }};
+document.getElementById('prov').addEventListener('change', e => {
+  const d = DEFAULTS[e.target.value];
+  if (!d) return;
+  document.querySelector('[name=AI_BASE_URL]').value = d[0];
+  document.querySelector('[name=AI_MODEL]').value = d[1];
+  document.querySelector('[name=SMART_MODEL]').value = SMART[e.target.value] || d[1];
+});
+</script>
+{% endblock %}

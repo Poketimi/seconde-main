@@ -29,7 +29,8 @@ description dans CHACUNE des langues demandées : {langs}.
 Règles :
 - Ne traduis JAMAIS une marque, un modèle, une référence ni une taille
   ("Salomon QST 99", "iPhone 13 Pro", "BMW R1200RT", "27.5\"" restent tels quels).
-- Garde les prix, unités, années et mesures à l'identique.
+- Garde les nombres, prix et années à l'identique, mais traduis le MOT d'unité
+  qui les accompagne : "65 Zoll" -> "65 pouces" / "65 inches".
 - Si l'entrée est déjà dans une des langues demandées, recopie le texte tel quel
   pour cette langue, sans le reformuler.
 - Traduis, n'invente pas : pas de résumé, pas de commentaire, pas d'ajout.
@@ -112,7 +113,11 @@ def translate(rows, langs=AUTO):
     return n
 
 def ensure(lid, lang):
-    """La traduction demandée, produite maintenant si elle manque."""
+    """La traduction demandée, produite maintenant si elle manque.
+
+    Profite de l'appel pour compléter aussi les langues automatiques qui
+    manqueraient : elles sortent du même appel, donc elles sont gratuites.
+    """
     if lang not in LANGS:
         return None
     r = get(lid, lang)
@@ -121,7 +126,9 @@ def ensure(lid, lang):
     l = db.q("SELECT * FROM listings WHERE id=?", (lid,), one=True)
     if not l:
         return None
-    translate([l], (lang,))
+    done = have(lid)
+    want = [lang] + [c for c in AUTO if c not in done and c != lang]
+    translate([l], want)
     return get(lid, lang)
 
 def pending(limit):

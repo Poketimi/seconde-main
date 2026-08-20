@@ -113,7 +113,28 @@ Le test confirme la clé, **liste les modèles réellement disponibles** si celu
 été retiré, puis classe trois annonces piège — un vrai iPhone, un service de réparation,
 une coque — et dit si le tri est correct.
 
-Presets dans `config.py` (`AI_PROVIDER=`) : `openrouter`, `gemini`, `groq`, `deepseek`, `ollama`.
+Presets dans `config.py` (`AI_PROVIDER=`) : `openrouter`, `gemini`, `groq`, `deepseek`,
+`ollama`, **`anthropic`**, **`openai`**.
+
+### Ton propre compte — page **Réglages**
+
+Tout se règle depuis `/reglages`, sans toucher `.env` ni redémarrer : le service, l'adresse
+de l'API, la clé, et **les deux modèles séparément** — celui qui trie les annonces (appelé
+des centaines de fois par jour, à prendre petit) et celui qui mène l'entretien de
+l'assistant (2 appels par recherche, c'est là qu'un bon modèle change le résultat). La
+liste déroulante est remplie par un vrai `GET /models` : ce sont les modèles que *ta* clé
+atteint, pas une liste écrite en dur. « Enregistrer et tester » fait un appel minuscule et
+te dit exactement ce qui cloche si ça ne marche pas.
+
+Choisir `anthropic` ou `openai` te fait passer par **ton compte chez eux**, facturé par eux,
+sans intermédiaire — l'app ne parle qu'à `/chat/completions`, que les deux exposent.
+Un champ laissé vide garde la valeur actuelle : la clé ne s'efface pas par accident, et la
+page ne la réaffiche jamais (seulement `sk-or-v1…4f21`). Elle est stockée en clair dans
+`data/market.db`, sur ta machine, exactement comme `.env` l'était — « Oublier la clé »
+la retire et rend la main à `.env`.
+
+Un modèle absent de `SMART_PRICES` est estimé au tarif le plus cher : un identifiant
+inconnu compte quand même contre le plafond annuel au lieu de passer pour gratuit.
 
 Les modèles gratuits sont **souvent rate-limités (429)** : `AI_FALLBACKS` en essaie
 plusieurs dans l'ordre, le premier qui répond gagne. Les réponses font ~250 tokens par
@@ -137,6 +158,23 @@ même annonce), et l'IA ne voit que ce qui a déjà passé les filtres gratuits
 
 Le texte scrapé est traité comme **non fiable** : il est classé, jamais exécuté, et le
 prompt dit au modèle d'ignorer les instructions qu'il contiendrait.
+
+## Traductions
+
+Une annonce tutti en allemand ou un vendeur tessinois sont illisibles pour la moitié des
+acheteurs. Chaque annonce qui entre en base est donc traduite en **français et en anglais**
+dès le cycle suivant (`i18n.backlog()`, sous `AI_TRANSLATE_BUDGET`), et l'**original est
+toujours conservé** : il reste dans `listings.title/description`, les traductions vivent à
+côté dans `listing_i18n`. La fiche d'une annonce affiche les langues en pastilles, plus un
+menu « + autre langue » pour les 15 proposées — une langue demandée est produite une fois
+puis gardée, et le choix suit la session.
+
+Une traduction ne coûte qu'un appel : les langues demandées sortent toutes du même, par
+lots de 5 annonces. Ouvrir une annonce en italien complète donc aussi le français et
+l'anglais s'ils manquaient, gratuitement. Le prompt interdit de traduire marques, modèles,
+références et nombres, mais traduit le mot d'unité qui les accompagne : « Samsung QLED
+QE65Q85R 65 Zoll » devient « … 65 pouces », pas « … 65 inches » dans la version française.
+Sans clé, ou si l'appel échoue, la fiche affiche l'annonce telle qu'elle a été publiée.
 
 ## Trajet en minutes
 
@@ -190,8 +228,10 @@ tourne à chaque cycle sur ce que le filtre distance a écarté, sous budget (`A
 C'est ce qui remplit `products` et donc les médianes de prix.
 
 `app.py` routes · `engine.py` boucle scan→filtre→match→notif · `sources.py` adaptateurs ·
-`browser.py` tier navigateur · `ai.py` DeepSeek · `geo.py` trajets · `db.py` schéma ·
-`net.py` sortie HTTP unique (curl_cffi : `requests` se fait bloquer par la moitié des hôtes).
+`crawler.py` acquisition identifiée (robots.txt, crawl-delay, cache conditionnel) ·
+`browser.py` tier navigateur · `ai.py` modèle bon marché + entretien · `i18n.py` traductions ·
+`settings.py` fournisseur/clé/modèles réglables à chaud · `geo.py` trajets · `db.py` schéma ·
+`net.py` sortie HTTP pour les API (OpenRouter, OSRM, GeoNames), sans usurpation d'empreinte.
 
 ## Limites assumées
 

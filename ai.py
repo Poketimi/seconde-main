@@ -66,12 +66,17 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "temperature": temperature, "max_tokens": max_tokens,
-                "response_format": {"type": "json_object"},
-                "usage": {"include": True}}
+                "response_format": {"type": "json_object"}}
+        # asking for the real cost is an OpenRouter extension; other providers
+        # reject unknown top-level fields outright
+        if config.AI_PROVIDER == "openrouter":
+            body["usage"] = {"include": True}
         r = net.post_json(url, body, headers=headers)
         if r is not None and r.status_code == 400:
-            # not every free model supports JSON mode; the prompt demands it anyway
+            # Not every model supports JSON mode, and not every endpoint accepts
+            # the usage flag; the prompt demands JSON anyway. Drop both and retry.
             body.pop("response_format", None)
+            body.pop("usage", None)
             r = net.post_json(url, body, headers=headers)
         if r is not None and r.status_code == 200:
             used = model
@@ -284,7 +289,7 @@ def record_spend(model, usage, purpose):
     tout = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
     cost = usage.get("cost")
     if cost is None:
-        pin, pout = config.SMART_PRICES.get(model, (2.0, 10.0))
+        pin, pout = config.SMART_PRICES.get(model, config.SMART_PRICE_DEFAULT)
         cost = (tin * pin + tout * pout) / 1e6
     db.run("""INSERT INTO ai_spend(ts,model,purpose,tokens_in,tokens_out,cost_usd)
               VALUES(?,?,?,?,?,?)""",
@@ -546,6 +551,22 @@ def upsert_product(p, category=None):
          norm_category(p.get("category") or category), p.get("release_year"),
          json.dumps(p.get("specs") or {}, ensure_ascii=False), time.time()))
 
+def list_models():
+    """Model ids this key can reach, or None if the endpoint refused.
+
+    Every OpenAI-compatible provider serves /models, so the settings page can
+    offer a real list instead of asking you to type an id from memory.
+    """
+    r = net.get(f"{config.AI_BASE_URL}/models",
+                headers={"Authorization": f"Bearer {config.AI_API_KEY}"}
+                if config.AI_API_KEY else None, throttle=False)
+    if r is None:
+        return None
+    try:
+        return [m.get("id") for m in r.json().get("data", []) if m.get("id")]
+    except Exception:
+        return None
+
 def selftest():
     """python3 ai.py test -- verify the key, then classify real problem listings."""
     print(f"provider : {config.AI_PROVIDER}\nendpoint : {config.AI_BASE_URL}"
@@ -555,13 +576,11 @@ def selftest():
         print("\nNo key. Put one in .env:  AI_PROVIDER=openrouter  AI_API_KEY=sk-or-...")
         return False
 
-    r = net.get(f"{config.AI_BASE_URL}/models",
-                headers={"Authorization": f"Bearer {config.AI_API_KEY}"}, throttle=False)
-    if r is None:
+    ids = list_models()
+    if ids is None:
         print("\n/models unreachable -- key rejected, or wrong AI_BASE_URL.")
         return False
     try:
-        ids = [m.get("id") for m in r.json().get("data", [])]
         print(f"\nkey accepted, {len(ids)} models available")
         if config.AI_MODEL not in ids and ids:
             free = [i for i in ids if ":free" in str(i)][:8]

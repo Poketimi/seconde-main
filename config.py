@@ -31,7 +31,28 @@ PROVIDERS = {
                    "llama-3.3-70b-versatile"),
     "deepseek":   ("https://api.deepseek.com/v1", "deepseek-chat"),   # payant
     "ollama":     ("http://localhost:11434/v1", "qwen2.5:7b"),        # local, sans clé
+    # Your own Claude / OpenAI account, billed by them, no middleman. Both
+    # expose an OpenAI-compatible /chat/completions, which is all this app uses.
+    "anthropic":  ("https://api.anthropic.com/v1", "claude-haiku-4-5-20251001"),
+    "openai":     ("https://api.openai.com/v1", "gpt-5-mini"),
 }
+
+# The capable model to suggest per provider, and the extra models worth falling
+# back to. Only OpenRouter hosts other vendors' models, so only it gets a chain.
+PROVIDER_SMART = {
+    "openrouter": "anthropic/claude-sonnet-5",
+    "anthropic":  "claude-sonnet-5",
+    "openai":     "gpt-5-mini",
+    "deepseek":   "deepseek-chat",
+    "gemini":     "gemini-2.0-flash",
+    "groq":       "llama-3.3-70b-versatile",
+    "ollama":     "qwen2.5:7b",
+}
+OPENROUTER_FALLBACKS = [
+    "deepseek/deepseek-v3.2",                    # paid, cheap
+    "nvidia/nemotron-3-super-120b-a12b:free",    # free tier, if credit runs out
+    "google/gemma-4-26b-a4b-it:free",
+]
 
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "openrouter").strip().lower()
 _base, _model = PROVIDERS.get(AI_PROVIDER, PROVIDERS["openrouter"])
@@ -45,12 +66,14 @@ AI_MODEL    = os.environ.get("AI_MODEL", _model)
 # Free models get rate-limited upstream constantly (429). Try these in order
 # before giving up; the first that answers wins. `python3 ai.py test` shows
 # which ones your key can reach right now.
-AI_FALLBACKS = [m for m in [
-    AI_MODEL,
-    "deepseek/deepseek-v3.2",                    # paid, cheap
-    "nvidia/nemotron-3-super-120b-a12b:free",    # free tier, if credit runs out
-    "google/gemma-4-26b-a4b-it:free",
-] if AI_PROVIDER == "openrouter"] or [AI_MODEL]
+def fallback_chain(model=None, provider=None):
+    """Model first, then the spares -- but only ones the provider actually serves."""
+    model = model or AI_MODEL
+    provider = provider or AI_PROVIDER
+    extra = OPENROUTER_FALLBACKS if provider == "openrouter" else []
+    return list(dict.fromkeys([model, *extra]))
+
+AI_FALLBACKS = fallback_chain()
 GEOCODER_EMAIL = os.environ.get("GEOCODER_EMAIL", "anonymous@example.com")
 
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", 1800))  # 30 min
@@ -113,7 +136,16 @@ SMART_PRICES = {                      # $/M tokens (in, out), for the fallback e
     "anthropic/claude-haiku-4.5": (1.00, 5.00),
     "openai/gpt-5-mini": (0.25, 2.00),
     "deepseek/deepseek-v4-pro": (0.66, 1.98),
+    # same models billed through your own account (no "vendor/" prefix)
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-opus-5": (10.00, 50.00),
+    "claude-haiku-4-5-20251001": (1.00, 5.00),
+    "gpt-5-mini": (0.25, 2.00),
+    "deepseek-chat": (0.28, 0.42),
 }
+# A model absent from the table is estimated at this rate, so an unknown id
+# still counts against the cap instead of billing invisibly.
+SMART_PRICE_DEFAULT = (2.00, 10.00)
 
 # AI spend guards
 AI_MAX_CALLS_PER_CYCLE = 40

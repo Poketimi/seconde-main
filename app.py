@@ -2,10 +2,11 @@
 import json, time, threading
 from flask import (Flask, render_template, request, redirect, url_for, jsonify,
                    flash, abort, session)
-import db, geo, ai, sources, engine, config, browser, profile, sellers, reference, crawler, i18n
+import db, geo, ai, sources, engine, config, browser, profile, sellers, reference, crawler, i18n, settings
 
 app = Flask(__name__)
 app.secret_key = "local-only"
+settings.load()          # la base a le dernier mot sur .env
 
 @app.template_filter("ago")
 def ago(ts):
@@ -310,6 +311,46 @@ def listing(lid):
                            attrs=json.loads(l["attrs"] or "{}"), images=images,
                            title=title, desc=desc, translated=translated,
                            lang=lang, ready=i18n.have(lid), LANGS=i18n.LANGS)
+
+@app.route("/reglages", methods=["GET", "POST"])
+def reglages():
+    """Ton fournisseur, ta clé, tes modèles. Rien ici n'exige de redémarrer."""
+    if request.method == "POST":
+        vals = {k: request.form.get(k, "") for k in settings.FIELDS}
+        # changer de fournisseur sans toucher au reste : reprendre ses défauts
+        prov = (vals.get("AI_PROVIDER") or "").strip().lower()
+        if prov and prov != config.AI_PROVIDER and prov in config.PROVIDERS:
+            base, model = config.PROVIDERS[prov]
+            vals["AI_BASE_URL"] = vals.get("AI_BASE_URL") or base
+            vals["AI_MODEL"] = vals.get("AI_MODEL") or model
+            vals["SMART_MODEL"] = vals.get("SMART_MODEL") or \
+                config.PROVIDER_SMART.get(prov, model)
+        settings.save(vals)
+        if request.form.get("probe"):
+            ok, msg = settings.probe()
+            flash(("✓ " if ok else "✗ ") + msg)
+        else:
+            flash("Réglages enregistrés.")
+        return redirect(url_for("reglages"))
+    return render_template("reglages.html", cur=settings.current(),
+                           providers=config.PROVIDERS, smart=config.PROVIDER_SMART,
+                           spent=ai.spend_since(), left=ai.budget_left(),
+                           recent=db.q("""SELECT model, purpose, cost_usd, ts FROM ai_spend
+                                          ORDER BY ts DESC LIMIT 8"""))
+
+@app.post("/reglages/oubli")
+def reglages_oubli():
+    """Effacer la clé stockée : .env (ou aucune clé) reprend la main."""
+    settings.clear("AI_API_KEY")
+    config.AI_API_KEY = ""
+    flash("Clé effacée de la base. Redémarre pour reprendre celle de .env.")
+    return redirect(url_for("reglages"))
+
+@app.get("/api/models")
+def api_models():
+    """Liste réelle des modèles que la clé actuelle peut atteindre."""
+    ids = ai.list_models()
+    return jsonify({"ok": ids is not None, "models": sorted(ids or [])})
 
 @app.post("/assist/probe")
 def assist_probe():

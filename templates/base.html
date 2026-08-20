@@ -13,6 +13,7 @@
   <a class="tab {{ 'on' if request.endpoint in ('assist','assist_answers') }}" href="{{ url_for('assist') }}">Assistant</a>
   <a class="tab {{ 'on' if request.endpoint == 'profil' }}" href="{{ url_for('profil') }}">Profil</a>
   <a class="tab {{ 'on' if request.endpoint == 'crawler_page' }}" href="{{ url_for('crawler_page') }}">Crawler</a>
+  <a class="tab {{ 'on' if request.endpoint == 'reglages' }}" href="{{ url_for('reglages') }}">Réglages</a>
   <span class="spacer"></span>
   <a class="btn cta" href="{{ url_for('search_form') }}">+ Recherche</a>
 </nav>

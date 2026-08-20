@@ -285,3 +285,15 @@ details summary{cursor:pointer;padding:.3rem 0}
 .trade p{margin:.15rem 0;font-size:.9rem}
 .trade .why{color:var(--fg);margin-top:.3rem}
 .trade .faint{display:inline-block;min-width:5.2rem}
+
+/* ---- translation ---- */
+.langbar{display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;margin:.1rem 0 .5rem}
+.lang{display:inline-flex;align-items:center;gap:.25rem;border:1px solid var(--line);
+  border-radius:99px;padding:.1rem .55rem;font-size:.755rem;color:var(--dim);
+  background:var(--bg);text-decoration:none;white-space:nowrap}
+.lang:hover{border-color:var(--line2);color:var(--fg)}
+.lang.on{color:var(--acc);background:var(--acc-soft);border-color:transparent;font-weight:560}
+/* a dot marks a language not yet produced: the click will take a second */
+.lang i{font-style:normal}
+select.lang.more{padding:.12rem .4rem;cursor:pointer;-webkit-appearance:none;appearance:none}
+.langnote{margin:-.3rem 0 .6rem}

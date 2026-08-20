@@ -29,11 +29,11 @@ if _REAL_DB.exists():
             CREATE INDEX IF NOT EXISTS idx_places_name ON places(country, name);""")
         c.executemany("INSERT INTO places VALUES(?,?,?,?,?,?)", rows)
 
-import geo, ai, sources, engine, browser, profile, sellers, reference, crawler
+import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings
 crawler.init()          # crawl_cache / crawl_log / domain_state on the scratch db
 
 def test_modules():
-    geo.demo(); ai.demo(); sources.demo(); engine.demo()
+    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo()
 
 def test_end_to_end():
     """Whole pipeline on a fake source: no network, fully deterministic."""
@@ -1024,6 +1024,146 @@ def test_product_stats():
     p = db.q("SELECT * FROM products WHERE id=?", (pid,), one=True)
     assert p["n_listings"] == 5 and p["price_median"] == 400, dict(p)
     assert p["price_p25"] == 300 and p["price_p75"] == 500, dict(p)
+
+
+
+# --- translation -----------------------------------------------------------
+
+def _fake_listing(url="https://tr/1", title="Bergschuhe Grösse 43",
+                  desc="Wenig getragen, sehr guter Zustand."):
+    db.run("DELETE FROM listing_i18n")
+    db.run("DELETE FROM listings WHERE url=?", (url,))
+    return db.run("INSERT INTO listings(url,source,title,description,first_seen)"
+                  " VALUES(?,?,?,?,?)", (url, "fake", title, desc, time.time()))
+
+def _stub_batches(calls, payload):
+    """Replace the model with a canned answer and count how often it is asked."""
+    def fake(system, listings, brief=None, budget=None, batch=None):
+        calls.append(len(listings))
+        return {i: payload for i, _ in enumerate(listings)}
+    return fake
+
+def test_translation_is_cached_and_keeps_the_original():
+    """A language is produced once. Asking again must not call the model."""
+    lid = _fake_listing()
+    calls = []
+    real_batches, real_avail = ai.run_batches, ai.available
+    ai.run_batches = _stub_batches(calls, {
+        "src": "de",
+        "t": {"fr": {"title": "Chaussures de montagne taille 43", "desc": "Peu portées."},
+              "en": {"title": "Hiking boots size 43", "desc": "Barely worn."}}})
+    ai.available = lambda: True
+    try:
+        assert i18n.ensure(lid, "fr")["title"] == "Chaussures de montagne taille 43"
+        assert len(calls) == 1, f"first request should call the model once, got {calls}"
+        i18n.ensure(lid, "fr")
+        i18n.ensure(lid, "en")          # written by the same call
+        assert len(calls) == 1, f"cached languages must not re-call the model: {calls}"
+        assert i18n.have(lid) == {"fr", "en"}
+    finally:
+        ai.run_batches, ai.available = real_batches, real_avail
+
+    # the original is never overwritten
+    l = db.q("SELECT * FROM listings WHERE id=?", (lid,), one=True)
+    assert l["title"] == "Bergschuhe Grösse 43", "original title was clobbered"
+    assert l["lang"] == "de", "source language not recorded"
+    assert i18n.view(l, "orig") == (l["title"], l["description"], False)
+    assert i18n.view(l, "fr")[0] == "Chaussures de montagne taille 43"
+    assert i18n.view(l, "fr")[2] is True, "translated text must be flagged as such"
+    assert i18n.view(l, "de")[2] is False, "the source language is not a translation"
+
+def test_translation_falls_back_to_the_original():
+    """No key, or a failed call: show the ad as published rather than nothing."""
+    lid = _fake_listing(url="https://tr/2")
+    l = db.q("SELECT * FROM listings WHERE id=?", (lid,), one=True)
+    real = ai.available
+    ai.available = lambda: False
+    try:
+        assert i18n.translate([l]) == 0
+        assert i18n.ensure(lid, "fr") is None
+    finally:
+        ai.available = real
+    assert i18n.view(l, "fr") == (l["title"], l["description"], False)
+    assert i18n.ensure(lid, "klingon") is None, "unknown language must be refused"
+
+def test_translation_backlog_skips_finished_listings():
+    lid = _fake_listing(url="https://tr/3")
+    assert lid in [r["id"] for r in i18n.pending(50)], "new listing should be queued"
+    for c in i18n.AUTO:
+        i18n._store(lid, c, "t", "d")
+    assert lid not in [r["id"] for r in i18n.pending(50)], \
+        "a fully translated listing must not be queued again"
+
+def test_language_bar_is_on_the_page():
+    import app
+    lid = _fake_listing(url="https://tr/4")
+    i18n._store(lid, "fr", "Chaussures de montagne", "Peu portées.")
+    c = app.app.test_client()
+    html = c.get(f"/listing/{lid}?lang=fr").get_data(as_text=True)
+    assert "Chaussures de montagne" in html, "translated title not rendered"
+    assert "Peu portées." in html, "translated description not rendered"
+    assert "lang=orig" in html, "no way back to the original"
+    assert "+ autre langue" in html, "no way to request another language"
+
+
+# --- your own provider / key / models --------------------------------------
+
+def _restore_ai(saved):
+    for k, v in saved.items():
+        setattr(config, k, v)
+    config.AI_FALLBACKS = config.fallback_chain()
+
+def test_own_provider_and_models():
+    """Switching provider must retarget the endpoint, the chain and the key."""
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    saved["AI_FALLBACKS"] = config.AI_FALLBACKS
+    db.run("DELETE FROM settings")
+    try:
+        settings.save({"AI_PROVIDER": "anthropic",
+                       "AI_BASE_URL": "https://api.anthropic.com/v1",
+                       "AI_MODEL": "claude-haiku-4-5-20251001",
+                       "SMART_MODEL": "claude-sonnet-5",
+                       "AI_API_KEY": "sk-ant-secret-value-1234",
+                       "SMART_BUDGET_USD": "25"})
+        assert config.AI_BASE_URL == "https://api.anthropic.com/v1"
+        assert config.SMART_BUDGET_USD == 25.0
+        # openrouter-only spares must not be offered to another provider
+        assert config.AI_FALLBACKS == ["claude-haiku-4-5-20251001"], config.AI_FALLBACKS
+
+        # a blank key means "keep the one I have", not "erase it"
+        settings.save({"AI_API_KEY": "", "AI_MODEL": "claude-opus-5"})
+        assert config.AI_API_KEY == "sk-ant-secret-value-1234", "blank field wiped the key"
+        assert config.AI_MODEL == "claude-opus-5"
+
+        # and it survives a restart: load() replays the db over .env
+        config.AI_MODEL = "something-else"
+        settings.load()
+        assert config.AI_MODEL == "claude-opus-5", "settings not persisted"
+
+        # an unpriced model still counts against the cap
+        assert config.SMART_PRICES.get("no-such-model") is None
+        db.run("DELETE FROM ai_spend")
+        cost = ai.record_spend("no-such-model", {"prompt_tokens": 1000,
+                                                 "completion_tokens": 1000}, "test")
+        assert cost > 0, "unknown model billed as free"
+
+        settings.clear("AI_API_KEY")
+        assert "AI_API_KEY" not in settings.stored()
+    finally:
+        db.run("DELETE FROM settings")
+        _restore_ai(saved)
+
+def test_settings_page_never_echoes_the_key():
+    import app
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    try:
+        config.AI_API_KEY = "sk-or-v1-thisisasecretkeyvalue"
+        html = app.app.test_client().get("/reglages").get_data(as_text=True)
+        assert "thisisasecretkeyvalue" not in html, "the key was rendered into the page"
+        assert "sk-or-v1" in html, "no hint of which key is in use"
+        assert "anthropic" in html and "openai" in html, "own-account providers missing"
+    finally:
+        _restore_ai(saved)
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
