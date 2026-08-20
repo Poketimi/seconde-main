@@ -1,0 +1,12 @@
+# Secrets — never commit. .env.example documents the shape instead.
+.env
+
+# Everything under data/ is local state, not source:
+#   market.db          your listings, searches and price history
+#   browser-profile/   a real Chrome profile holding your Facebook session cookies
+#   *.log              scan output, which quotes scraped pages
+data/
+
+__pycache__/
+*.pyc
+.DS_Store

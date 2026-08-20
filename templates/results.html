@@ -1,0 +1,89 @@
+{% extends "base.html" %}{% block live %}1{% endblock %}{% block body %}
+<div class="hero">
+  <div>
+    <h1>{{ s.name }}</h1>
+    <p class="dim">{{ s.query }}{% if s.reference %} · réf {{ s.reference }}{% endif %}</p>
+    <div class="chips" style="margin-top:.4rem">
+      <span class="chip">{{ s.price_min|int if s.price_min else 0 }}–{{ s.price_max|int if s.price_max else '∞' }}</span>
+      {% for o in origins %}<span class="chip">{{ o.max_minutes|int }}min {{ o.mode }} · {{ o.label }}</span>{% endfor %}
+      {% if s.shipping_ok %}<span class="chip">livraison acceptée</span>{% endif %}
+    </div>
+  </div>
+  <div class="inline-forms">
+    <form method="post" action="{{ url_for('run_now', sid=s.id) }}"><button class="cta">Scanner</button></form>
+    <a class="btn" href="{{ url_for('targets_page', sid=s.id) }}">Modèles</a>
+    <a class="btn" href="{{ url_for('search_form', sid=s.id) }}">Éditer</a>
+    <form method="post" action="{{ url_for('delete', sid=s.id) }}"
+          onsubmit="return confirm('Supprimer « {{ s.name }} » ?\n\nLes annonces déjà vues restent dans le catalogue.')">
+      <button class="danger">Supprimer</button></form>
+  </div>
+</div>
+
+<div class="sorts">
+  {% for k,lab in [('score','pertinence'),('deal','bonne affaire'),('price','prix'),('near','proximité'),('new','récence'),('ending','enchère qui finit')] %}
+  <a class="{{ 'on' if sort==k }}" href="{{ url_for('results', sid=s.id, sort=k, **f|reject_sort) }}">{{ lab }}</a>
+  {% endfor %}
+</div>
+
+<form class="filters" method="get">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input name="fmin" type="number" step="any" value="{{ f.fmin or '' }}" placeholder="prix min">
+  <input name="fmax" type="number" step="any" value="{{ f.fmax or '' }}" placeholder="prix max">
+  <input name="fmins" type="number" value="{{ f.fmins or '' }}" placeholder="max min">
+  <input name="floc" value="{{ f.floc or '' }}" placeholder="lieu">
+  <select name="fsource"><option value="">toutes sources</option>
+    {% for c in srcs %}<option value="{{ c }}" {{ 'selected' if f.fsource==c }}>{{ c }}</option>{% endfor %}</select>
+  <select name="fseller"><option value="">tout vendeur</option>
+    <option value="private" {{ 'selected' if f.fseller=='private' }}>particulier</option>
+    <option value="pro" {{ 'selected' if f.fseller=='pro' }}>pro</option></select>
+  <label class="inline"><input type="checkbox" name="fauction" value="1" {{ 'checked' if f.fauction=='1' }}> enchères en cours</label>
+  <label class="inline"><input type="checkbox" name="fstar" value="1" {{ 'checked' if f.fstar=='1' }}> favoris</label>
+  <button>Filtrer</button>
+  {% if nfilters %}<a class="btn" href="{{ url_for('results', sid=s.id, sort=sort) }}">✕ {{ nfilters }}</a>{% endif %}
+</form>
+<p class="faint">{{ rows|length }} annonce{{ 's' if rows|length != 1 }}</p>
+
+{% if not rows %}<p class="emptystate">Aucun match pour l'instant — le scan tourne en arrière-plan.</p>{% endif %}
+<div class="grid">
+{% for r in rows %}
+  <div class="card listing">
+    {% if r.image %}<a href="{{ url_for('listing', lid=r.listing_id) }}"><img src="{{ r.image }}" class="cover" alt=""></a>{% endif %}
+    <h3><a href="{{ url_for('listing', lid=r.listing_id) }}">{{ r.title }}</a></h3>
+    <div class="price">{{ r.price|money(r.currency) }}
+      {% if r.deal_delta is not none %}
+        <span class="deal {{ 'good' if r.deal_delta < -10 else ('bad' if r.deal_delta > 10 else '') }}">{{ '%+.0f'|format(r.deal_delta) }}% vs médiane</span>
+      {% endif %}
+    </div>
+    {% if r.auction_end %}
+      <p class="dim auction-line {{ 'urgent' if (r.auction_end - now) < 7200 and (r.auction_end - now) > 0 }}">
+        ⏱ {{ r.auction_end|until }}{% if r.bids is not none %} · <b>{{ r.bids }}</b> offre{{ 's' if r.bids != 1 }}{% endif %}</p>
+    {% endif %}
+    <p class="dim">{{ r.location_raw or '' }}
+      {% if r.travel_minutes is not none %} · <b>{{ r.travel_minutes|round|int }}min</b> {{ r.travel_mode }} de {{ r.travel_origin }}
+      {% elif r.travel_origin %} · {{ r.travel_origin }}{% endif %}</p>
+    <div class="chips">
+      <span class="chip">{{ r.source }}</span>
+      <span class="chip">{{ r.seller_type or '?' }}</span>
+      {% if r.condition %}<span class="chip">{{ r.condition }}</span>{% endif %}
+      <span class="chip">{{ r.first_seen|ago }}</span>
+    </div>
+    {% if r.reason %}<p class="reason">{{ r.reason }}</p>{% endif %}
+    {% if r.canonical_name %}<p class="faint">→ <a href="{{ url_for('product', pid=r.product_id) }}">{{ r.canonical_name }}</a></p>{% endif %}
+    <div><form method="post" action="{{ url_for('star', mid=r.mid) }}">
+        <input type="hidden" name="want" value="{{ 0 if r.starred else 1 }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+      <button class="star">{{ '★ gardé' if r.starred else '☆ garder' }}</button></form></div>
+  </div>
+{% endfor %}
+</div>
+
+<h2>Journal des scans</h2>
+<div class="tablewrap">
+<table>
+  <tr><th class="nowrap">Quand</th><th class="nowrap">Site</th><th class="num">Trouvé</th>
+      <th class="num">Nouveau</th><th>Note</th></tr>
+  {% for l in log %}<tr><td class="nowrap faint">{{ l.ts|ago }}</td><td class="nowrap">{{ l.source }}</td>
+    <td class="num">{{ l.found }}</td><td class="num">{{ l.new }}</td><td class="dim">{{ l.note }}</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

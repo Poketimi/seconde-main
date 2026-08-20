@@ -1,0 +1,55 @@
+{% extends "base.html" %}{% block live %}1{% endblock %}{% block body %}
+<h1>Catalogue</h1>
+<p class="sub">Les fiches produits sont construites par l'IA à partir des annonces vues :
+les statistiques de prix disent tout de suite si une annonce est une bonne affaire.</p>
+
+<div class="sorts">
+  <a class="{{ 'on' if tab == 'produits' }}" href="{{ url_for('catalogue', tab='produits', q=q) }}">Produits</a>
+  <a class="{{ 'on' if tab == 'annonces' }}" href="{{ url_for('catalogue', tab='annonces', q=q) }}">Annonces</a>
+  <form class="row" style="margin-left:auto" method="get">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input name="q" value="{{ q }}" placeholder="filtrer…">
+    <button>Chercher</button>
+    {% if q %}<a class="btn" href="{{ url_for('catalogue', tab=tab) }}">✕</a>{% endif %}
+  </form>
+</div>
+
+{% if tab == 'produits' %}
+  <div class="tablewrap">
+  <table>
+    <tr><th>Produit</th><th class="nowrap">Marque</th><th class="nowrap">Catégorie</th>
+        <th class="num">Annonces</th><th class="num">P25</th><th class="num">Médiane</th><th class="num">P75</th></tr>
+    {% for p in products %}
+    <tr>
+      <td class="main"><a href="{{ url_for('product', pid=p.id) }}"><span class="trunc">{{ p.canonical_name }}</span></a></td>
+      <td class="nowrap dim">{{ p.brand or '—' }}</td>
+      <td class="nowrap"><span class="chip">{{ p.category or '—' }}</span></td>
+      <td class="num">{{ p.n }}</td>
+      <td class="num dim">{{ p.price_p25|money('') }}</td>
+      <td class="num"><b>{{ p.price_median|money('') }}</b></td>
+      <td class="num dim">{{ p.price_p75|money('') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% if not products %}<p class="emptystate">Aucun produit — les fiches se créent au fil des scans.</p>{% endif %}
+{% else %}
+  <div class="tablewrap">
+  <table>
+    <tr><th></th><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th>
+        <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr>
+    {% for l in listings %}
+    <tr>
+      <td>{% if l.image %}<img src="{{ l.image }}" class="thumb" alt="">{% endif %}</td>
+      <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l.title }}</span></a></td>
+      <td class="num">{{ l.price|money(l.currency) }}</td>
+      <td class="nowrap dim">{{ l.location_raw or '—' }}</td>
+      <td class="nowrap dim">{{ l.source }}</td>
+      <td class="nowrap faint">{{ l.first_seen|ago }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% if not listings %}<p class="emptystate">Aucune annonce.</p>{% endif %}
+{% endif %}
+{% endblock %}

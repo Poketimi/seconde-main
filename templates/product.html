@@ -1,0 +1,90 @@
+{% extends "base.html" %}{% block body %}
+<div class="hero">
+  <div>
+    <h1>{{ p.canonical_name }}</h1>
+    <p class="dim">{{ p.brand or '' }} {{ p.model or '' }} {{ p.variant or '' }}
+      {% if p.category %}· {{ p.category }}{% endif %}{% if p.release_year %} · {{ p.release_year }}{% endif %}</p>
+  </div>
+  <div class="metrics">
+    {% if ref and ref.ref_price %}
+    <div class="metric"><b>{{ ref.ref_price|round|int }}</b>
+      <span><a href="{{ ref.ref_url }}" target="_blank" rel="noopener">neuf dès (CH)</a></span></div>
+    {% endif %}
+    <div class="metric"><b>{{ p.price_p25|money('') }}</b><span>P25</span></div>
+    <div class="metric"><b>{{ p.price_median|money('') }}</b><span>médiane</span></div>
+    <div class="metric"><b>{{ p.price_p75|money('') }}</b><span>P75</span></div>
+    <div class="metric"><b>{{ p.n_listings }}</b><span>annonces</span></div>
+  </div>
+</div>
+
+{% if ref and ref.ref_price and p.price_median %}
+  <p class="dim">Médiane d'occasion <b>{{ p.price_median|round|int }}</b> contre
+    <b>{{ ref.ref_price|round|int }}</b> neuf en Suisse
+    ({{ '%+.0f'|format((p.price_median - ref.ref_price) / ref.ref_price * 100) }}%).
+    Prix relevé sur toppreise.ch — que des marchands suisses, donc livrable en Suisse.</p>
+{% endif %}
+
+{% if chart %}
+<h2>Évolution du prix</h2>
+<figure class="chart">
+  <svg viewBox="0 0 {{ chart.w }} {{ chart.h }}" width="100%" height="{{ chart.h }}"
+       role="img" aria-label="Prix médian par jour, de {{ chart.first }} à {{ chart.last }}">
+    <line x1="{{ chart.pad }}" y1="{{ chart.y_hi }}" x2="{{ chart.w - chart.pad }}"
+          y2="{{ chart.y_hi }}" class="grid"/>
+    <line x1="{{ chart.pad }}" y1="{{ chart.y_lo }}" x2="{{ chart.w - chart.pad }}"
+          y2="{{ chart.y_lo }}" class="grid"/>
+    <polygon points="{{ chart.band }}" class="band"/>
+    <polyline points="{{ chart.line }}" class="line" fill="none"/>
+    {% for x, y, day, v in chart.dots %}
+      <circle cx="{{ x }}" cy="{{ y }}" r="4" class="pt"><title>{{ day }} · {{ v|round|int }}</title></circle>
+    {% endfor %}
+    <text x="{{ chart.pad }}" y="{{ chart.y_hi - 6 }}" class="axis">{{ chart.hi|round|int }}</text>
+    <text x="{{ chart.pad }}" y="{{ chart.y_lo + 14 }}" class="axis">{{ chart.lo|round|int }}</text>
+    <text x="{{ chart.pad }}" y="{{ chart.h - 6 }}" class="axis">{{ chart.first }}</text>
+    <text x="{{ chart.w - chart.pad }}" y="{{ chart.h - 6 }}" class="axis" text-anchor="end">{{ chart.last }}</text>
+  </svg>
+  <figcaption class="faint">Médiane par jour ; la bande couvre P25–P75.
+    Les annonces disparues restent comptées — c'est ce qui rend la tendance lisible.</figcaption>
+</figure>
+{% elif hist %}
+  <p class="faint">Un seul jour de relevé pour l'instant — la courbe apparaît dès le deuxième.</p>
+{% endif %}
+
+{% if hist %}
+<details><summary class="faint">Voir les chiffres</summary>
+<div class="tablewrap"><table>
+  <tr><th>Jour</th><th class="num">Annonces</th><th class="num">P25</th>
+      <th class="num">Médiane</th><th class="num">P75</th></tr>
+  {% for d in hist|reverse %}<tr><td class="nowrap">{{ d.day }}</td><td class="num">{{ d.n }}</td>
+    <td class="num dim">{{ d.p25|round|int }}</td><td class="num"><b>{{ d.median|round|int }}</b></td>
+    <td class="num dim">{{ d.p75|round|int }}</td></tr>{% endfor %}
+</table></div>
+</details>
+{% endif %}
+
+{% if specs %}
+<h2>Caractéristiques</h2>
+<div class="tablewrap"><table>
+{% for k,v in specs.items() %}<tr><td class="nowrap dim">{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+
+<h2>Annonces</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Statut</th><th class="nowrap">État</th><th class="nowrap">Lieu</th>
+      <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr>
+  {% for l in rows %}<tr>
+    <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l.title }}</span></a></td>
+    <td class="num">{{ l.price|money(l.currency) }}</td>
+    <td class="nowrap">{% if l.status == 'gone' %}<span class="pill empty"><i class="dot"></i>disparue</span>
+      {% elif l.status == 'ended' %}<span class="pill login"><i class="dot"></i>terminée</span>
+      {% else %}<span class="pill ok"><i class="dot"></i>en ligne</span>{% endif %}</td>
+    <td class="nowrap dim">{{ l.condition or '—' }}</td>
+    <td class="nowrap dim">{{ l.location_raw or '—' }}</td>
+    <td class="nowrap dim">{{ l.source }}</td>
+    <td class="nowrap faint">{{ l.first_seen|ago }}</td>
+  </tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

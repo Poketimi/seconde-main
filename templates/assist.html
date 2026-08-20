@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block body %}
+<h1>Assistant</h1>
+<p class="sub">Tu ne sais pas quels critères choisir ? Décris l'objet en une ligne.
+Quelques questions fermées suffisent à en déduire une vraie recherche —
+la bonne longueur de skis se déduit de ta taille et de ton niveau.</p>
+
+<form class="form" method="post" style="max-width:560px">
+  <label>Qu'est-ce que tu cherches ?
+    <input name="query" required autofocus placeholder="une paire de ski, une raquette de tennis, une moto…">
+  </label>
+  <div class="row"><button class="cta" type="submit">Poser les questions</button></div>
+</form>
+
+<p class="faint" style="margin-top:1.4rem">
+  Modèle d'entretien : <code>{{ model }}</code> ·
+  budget restant <b>{{ '%.2f'|format(budget) }} $</b> sur {{ '%.0f'|format(cap) }} $ ·
+  ≈ {{ (budget / 0.011)|int }} entretiens.
+  Il ne sert qu'à l'entretien : le tri des annonces reste sur le modèle bon marché.
+  <a href="{{ url_for('profil') }}">Voir mes données</a>.
+</p>
+{% endblock %}

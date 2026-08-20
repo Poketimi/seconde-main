@@ -1,0 +1,67 @@
+{% extends "base.html" %}{% block live %}1{% endblock %}{% block body %}
+<h1>Sites</h1>
+<p class="sub">« Se connecter » ouvre une <b>vraie fenêtre</b> : tu t'identifies toi-même.
+L'app ne voit jamais tes identifiants et ne résout aucun contrôle de sécurité.</p>
+
+{% if not playwright %}
+  <div class="flash">Playwright absent — les sites « navigateur » sont indisponibles.
+    <code>pip install playwright && python3 -m playwright install chromium</code></div>
+{% endif %}
+{% if login_state.running %}
+  <div class="flash">Connexion en cours pour <b>{{ login_state.site }}</b> — {{ login_state.message }}.
+    <a href="{{ url_for('sources_page') }}">rafraîchir</a></div>
+{% elif login_state.message %}
+  <div class="flash">{{ login_state.site }} : {{ login_state.message }}</div>
+{% endif %}
+
+<div class="tablewrap">
+<table>
+  <tr><th>Site</th><th class="nowrap">Accès</th><th class="nowrap">État</th><th>Détail</th>
+      <th class="nowrap">Dernier OK</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td class="nowrap"><b>{{ r.name }}</b></td>
+    <td class="nowrap faint">{{ 'navigateur' if r.needs_browser else 'HTTP' }}</td>
+    <td class="nowrap"><span class="pill {{ r.status }}"><i class="dot"></i>{{ r.label }}</span>
+      {% if r.fail_streak > 1 %}<span class="faint"> ×{{ r.fail_streak }}</span>{% endif %}</td>
+    <td class="dim"><span class="trunc">{{ r.detail }}</span>
+      {% if r.session and r.session.logged_in and r.status in ('blocked', 'login', 'empty') %}
+        <div class="faint">✓ session enregistrée — mais le contrôle anti-robot bloque
+          quand même l'accès automatisé. Se connecter et passer le contrôle sont deux
+          portes différentes.</div>
+      {% elif r.needs_browser and r.session and not r.session.logged_in %}
+        <div class="faint">aucune session enregistrée pour ce site</div>
+      {% endif %}
+    </td>
+    <td class="nowrap faint">{{ r.last_ok|ago }}</td>
+    <td>
+      <div class="inline-forms">
+        <form method="post" action="{{ url_for('source_check', name=r.name) }}"><button>Vérifier</button></form>
+        {% if r.login_url %}
+          <form method="post" action="{{ url_for('source_login', name=r.name) }}">
+            <button {{ 'disabled' if login_state.running }}>Se connecter</button></form>
+        {% endif %}
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<h2>Ce que veulent dire les états</h2>
+<div class="tablewrap">
+<table>
+  <tr><th class="nowrap">État</th><th>Signification</th></tr>
+  <tr><td class="nowrap"><span class="pill ok"><i class="dot"></i>OK</span></td><td class="dim">Annonces récupérées.</td></tr>
+  <tr><td class="nowrap"><span class="pill empty"><i class="dot"></i>aucun résultat</span></td>
+      <td class="dim">Le site a répondu mais rien n'a été extrait : rupture de stock, ou l'adaptateur ne sait pas lire cette page.</td></tr>
+  <tr><td class="nowrap"><span class="pill blocked"><i class="dot"></i>bloqué</span></td>
+      <td class="dim">Contrôle de sécurité (Cloudflare). Il n'est pas contourné — reconnecte-toi. Le cookie obtenu est lié à ton IP et <b>expire en quelques heures</b>.</td></tr>
+  <tr><td class="nowrap"><span class="pill login"><i class="dot"></i>connexion requise</span></td>
+      <td class="dim">Clique « Se connecter », identifie-toi, ferme la fenêtre.</td></tr>
+  <tr><td class="nowrap"><span class="pill error"><i class="dot"></i>erreur</span></td>
+      <td class="dim">Le site a changé : l'adaptateur doit être corrigé.</td></tr>
+</table>
+</div>
+<p class="dim">Une source qui passait à OK et n'y est plus déclenche une notification macOS, et une autre quand elle revient.</p>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ query }}</h1>
+<p class="sub">Étape {{ round }}{% if round > 1 %} — on précise{% endif %} ·
+  {{ questions|length }} question{{ 's' if questions|length > 1 }} fermée{{ 's' if questions|length > 1 }}.
+  {% if cached %}<span class="chip">questions déjà connues — aucun appel IA</span>{% endif %}
+  {% if round > 1 %}<span class="chip">tes réponses ont ouvert des précisions utiles</span>{% endif %}</p>
+
+<form class="form" method="post" action="{{ url_for('assist_answers') }}" style="max-width:640px">
+  <input type="hidden" name="query" value="{{ query }}">
+  <input type="hidden" name="cat" value="{{ cat }}">
+
+  {% for q in questions %}
+    {% set prev = known.get(q.id) or known.get(cat ~ '.' ~ q.id) %}
+    <fieldset>
+      <legend>{{ q.text }}</legend>
+      <input type="hidden" name="label_{{ q.id }}" value="{{ q.text }}">
+      <input type="hidden" name="scope_{{ q.id }}" value="{{ q.scope }}">
+      {% if q.type == 'bool' %}
+        <label class="inline"><input type="radio" name="q_{{ q.id }}" value="oui"
+          {{ 'checked' if prev == 'oui' }} required> Oui</label>
+        <label class="inline"><input type="radio" name="q_{{ q.id }}" value="non"
+          {{ 'checked' if prev == 'non' }}> Non</label>
+      {% elif q.type == 'multi' %}
+        {% set chosen = (prev or '').split(', ') %}
+        <p class="faint">plusieurs réponses possibles</p>
+        {% for o in q.options %}
+          <label class="inline"><input type="checkbox" name="q_{{ q.id }}" value="{{ o }}"
+            {{ 'checked' if o in chosen }}> {{ o }}</label>
+        {% endfor %}
+      {% else %}
+        {% for o in q.options %}
+          <label class="inline"><input type="radio" name="q_{{ q.id }}" value="{{ o }}"
+            {{ 'checked' if prev == o }} {{ 'required' if loop.first }}> {{ o }}</label>
+        {% endfor %}
+      {% endif %}
+      {% if prev %}<p class="faint">déjà connu : {{ prev }} — <a href="{{ url_for('profil') }}">modifier</a></p>{% endif %}
+    </fieldset>
+  {% endfor %}
+
+  <div class="row">
+    <button class="cta" type="submit">Construire la recherche</button>
+    <a class="btn" href="{{ url_for('assist') }}">Annuler</a>
+  </div>
+</form>
+{% endblock %}

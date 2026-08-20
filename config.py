@@ -1,0 +1,123 @@
+"""Config + the tuning knobs. Everything you'd want to fiddle with lives here."""
+import os
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+DB_PATH = ROOT / "data" / "market.db"
+
+# --- .env loading (5 lines beats a python-dotenv dependency) ---
+_env = ROOT / ".env"
+if _env.exists():
+    for line in _env.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+# --- AI provider -------------------------------------------------------
+# Any OpenAI-compatible endpoint. Pick one with AI_PROVIDER in .env, or set
+# AI_BASE_URL / AI_MODEL by hand to use something not listed here.
+# The three "free" ones need a free account and no credit card.
+PROVIDERS = {
+    # OpenRouter's free roster changes often. `python3 ai.py test` lists the
+    # ones your key can actually reach if this default has been retired.
+    # Paid by default now that credit is on the account: the :free models are
+    # rate-limited constantly (429), and the retries made scans slower than the
+    # model ever was. deepseek-v4-flash is ~1.3s/call and costs cents a month.
+    "openrouter": ("https://openrouter.ai/api/v1", "deepseek/deepseek-v4-flash"),
+    "gemini":     ("https://generativelanguage.googleapis.com/v1beta/openai/",
+                   "gemini-2.0-flash"),
+    "groq":       ("https://api.groq.com/openai/v1",
+                   "llama-3.3-70b-versatile"),
+    "deepseek":   ("https://api.deepseek.com/v1", "deepseek-chat"),   # payant
+    "ollama":     ("http://localhost:11434/v1", "qwen2.5:7b"),        # local, sans clé
+}
+
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "openrouter").strip().lower()
+_base, _model = PROVIDERS.get(AI_PROVIDER, PROVIDERS["openrouter"])
+
+# AI_API_KEY is the general name; DEEPSEEK_API_KEY still works.
+AI_API_KEY  = (os.environ.get("AI_API_KEY")
+               or os.environ.get("DEEPSEEK_API_KEY", "")).strip()
+AI_BASE_URL = os.environ.get("AI_BASE_URL", _base).rstrip("/")
+AI_MODEL    = os.environ.get("AI_MODEL", _model)
+
+# Free models get rate-limited upstream constantly (429). Try these in order
+# before giving up; the first that answers wins. `python3 ai.py test` shows
+# which ones your key can reach right now.
+AI_FALLBACKS = [m for m in [
+    AI_MODEL,
+    "deepseek/deepseek-v3.2",                    # paid, cheap
+    "nvidia/nemotron-3-super-120b-a12b:free",    # free tier, if credit runs out
+    "google/gemma-4-26b-a4b-it:free",
+] if AI_PROVIDER == "openrouter"] or [AI_MODEL]
+GEOCODER_EMAIL = os.environ.get("GEOCODER_EMAIL", "anonymous@example.com")
+
+POLL_SECONDS = int(os.environ.get("POLL_SECONDS", 1800))  # 30 min
+# Politeness. We were making 2574 requests/day -- one every 34s, round the
+# clock, from a single IP -- and ricardo, anibis, leboncoin and tutti all began
+# refusing. No fingerprint survives that pattern; the rate is the tell.
+PER_SITE_DELAY = 8.0        # seconds between two requests to the same host
+
+# At most this many models go to any one source per cycle; the rest rotate in
+# next time. Full coverage takes a few cycles instead of one burst.
+TARGETS_PER_CYCLE = int(os.environ.get("TARGETS_PER_CYCLE", 3))
+
+# After a source starts refusing, back off exponentially instead of hammering
+# it: 10min, 20min, 40min... capped. A single success clears it.
+BACKOFF_BASE = 600
+BACKOFF_MAX = 6 * 3600
+HTTP_TIMEOUT = 25
+
+# --- travel-time model -------------------------------------------------
+# ponytail: crow-fly * detour / speed is the cheap prefilter; OSRM refines
+# the survivors. Tune these if the estimates read wrong for your region.
+MODE_SPEED_KMH = {"foot": 4.5, "bike": 15.0, "car": 55.0, "transit": 28.0}
+DETOUR_FACTOR  = {"foot": 1.25, "bike": 1.3, "car": 1.35, "transit": 1.45}
+OSRM_URL = "https://router.project-osrm.org"
+OSRM_PROFILE = {"foot": "foot", "bike": "bike", "car": "driving"}  # no transit
+# refine with OSRM when the estimate is within this factor of the limit
+REFINE_BAND = 1.6
+
+# Browser tier: headless is faster, but some sites re-trigger their security
+# check on headless and stay quiet on a visible window. Flip if a site that
+# worked during `login` keeps coming back BLOCKED.
+# Headless by default: a visible Chrome window grabs macOS focus on every
+# scan. Facebook returns identical results headless once you are logged in,
+# so only the login flow forces a window.
+BROWSER_HEADLESS = os.environ.get("BROWSER_HEADLESS", "1") != "0"
+
+# Nothing is ever deleted. A listing not seen for this long is marked gone --
+# "gone", not "sold": a seller may simply have withdrawn it, and we cannot tell.
+# Auctions are different: a past end date IS a real ending.
+# Browser-backed sources (facebook & co) cost ~6s and a real page view each.
+# Querying every model on every cycle would mean hundreds of automated views an
+# hour -- the surest way to get the account restricted. Only this many models
+# are queried per cycle on those sources; the rest rotate in next time, so
+# coverage is complete over a few cycles instead of all at once.
+BROWSER_TARGETS_PER_CYCLE = int(os.environ.get("BROWSER_TARGETS_PER_CYCLE", 2))
+
+GONE_AFTER_HOURS = float(os.environ.get("GONE_AFTER_HOURS", 48))
+
+# --- assisted search ---------------------------------------------------
+# A genuinely capable model, used ONLY to run the interview: twice per new
+# search (generate questions, turn answers into criteria). It never sees a
+# listing -- per-listing work stays on AI_MODEL above.
+# Measured on OpenRouter: $2/M in, $10/M out => ~$0.011 per interview,
+# about 900 interviews for $10.
+SMART_MODEL       = os.environ.get("SMART_MODEL", "anthropic/claude-sonnet-5")
+SMART_BUDGET_USD  = float(os.environ.get("SMART_BUDGET_USD", 10.0))
+SMART_BUDGET_DAYS = 365
+SMART_PRICES = {                      # $/M tokens (in, out), for the fallback estimate
+    "anthropic/claude-sonnet-5": (2.00, 10.00),
+    "anthropic/claude-haiku-4.5": (1.00, 5.00),
+    "openai/gpt-5-mini": (0.25, 2.00),
+    "deepseek/deepseek-v4-pro": (0.66, 1.98),
+}
+
+# AI spend guards
+AI_MAX_CALLS_PER_CYCLE = 40
+AI_ENRICH_BUDGET = int(os.environ.get("AI_ENRICH_BUDGET", 200))  # per day
+# Every listing is translated into these (i18n.AUTO) as it arrives; one call
+# covers 5 listings x both languages, so this is ~12 calls per cycle.
+AI_TRANSLATE_BUDGET = int(os.environ.get("AI_TRANSLATE_BUDGET", 60))

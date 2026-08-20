@@ -1,0 +1,4 @@
+flask>=3.0
+requests>=2.31
+curl_cffi>=0.7        # TLS impersonation: needed for ricardo/leboncoin/anibis
+beautifulsoup4>=4.12

@@ -1,0 +1,133 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ 'Modifier' if (s and s.id) else 'Nouvelle' }} recherche</h1>
+{% if explain %}<div class="flash">{{ explain }}</div>{% endif %}
+{% if tradeoffs %}
+<div class="tradeoffs">
+  <h3>Ce que j'ai fait différemment de ta demande</h3>
+  {% for t in tradeoffs %}
+  <div class="trade">
+    <p><span class="faint">tu voulais</span> {{ t.demande }}</p>
+    <p><span class="faint">je propose</span> <b>{{ t.propose }}</b></p>
+    <p class="why">{{ t.pourquoi }}</p>
+    {% if t.sinon %}<p class="dim">Pour avoir quand même ta préférence : {{ t.sinon }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  <p class="faint">Les modèles ci-dessous restent modifiables : si tu préfères ta version,
+    remplace-les dans la liste.</p>
+</div>
+{% endif %}
+{% if leads %}
+<div class="leads">
+  <h3>Autres marchés à regarder</h3>
+  <p class="dim">Proposés par l'assistant puis <b>vérifiés</b> : il n'a pas d'accès web,
+    ses URL sont de mémoire. Ceux dont le domaine n'existe pas ont été retirés.
+    Ces sites ne sont pas scannés automatiquement — c'est une piste à ouvrir à la main.</p>
+  <table>
+    <tr><th>Site</th><th>Pourquoi</th><th class="nowrap">Vérification</th><th></th></tr>
+    {% for m in leads %}
+    <tr>
+      <td class="nowrap"><b>{{ m.name }}</b> <span class="faint">{{ m.country }}</span></td>
+      <td class="dim">{{ m.why }}</td>
+      <td class="nowrap"><span class="pill {{ 'ok' if m.status == 'parsable'
+          else ('login' if m.status == 'manual' else 'blocked') }}"><i class="dot"></i>
+        {{ {'parsable':'exploitable','manual':'à la main','badurl':'URL fausse'}.get(m.status, m.status) }}</span>
+        <div class="faint">{{ m.detail }}</div></td>
+      <td><a class="btn" href="{{ m.url }}" target="_blank" rel="noopener">Ouvrir ↗</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+<form method="post" class="form" action="{{ url_for('search_form', sid=s.id) if (s and s.id) else url_for('search_form') }}">
+  <label>Nom <input name="name" required value="{{ s.name if s else '' }}" placeholder="Vélo de course"></label>
+
+  <fieldset><legend>Ce que tu cherches</legend>
+    <label>Description <input name="query" required value="{{ s.query if s else '' }}"
+      placeholder="iphone 13 pro 256go"></label>
+    <label>Modèles précis à chercher <span class="faint">(un par ligne — c'est ce qui
+      rend la recherche précise ; laisser vide pour chercher par mot-clé)</span>
+      <textarea name="targets" rows="7" placeholder="Salomon QST 99&#10;Head Kore 99&#10;Nordica Enforcer 100">{{ targets_text or '' }}</textarea>
+    </label>
+    <label>Référence / modèle exact <input name="reference" value="{{ s.reference or '' if s else '' }}"
+      placeholder="MLVA3ZD/A (optionnel — prioritaire sur la description)"></label>
+    <div class="two">
+      <label>Catégorie
+        <select name="category">
+          {% for c in ['','phone','computer','photo','audio','tv','console','game','furniture','appliance','clothing','sport','bike','car','moto','realestate','tool','other'] %}
+          <option value="{{ c }}" {{ 'selected' if s and s.category==c }}>{{ c or '— auto —' }}</option>{% endfor %}
+        </select></label>
+      <label>État minimum
+        <select name="condition_min">
+          {% for c in ['','new','like_new','good','fair','parts'] %}
+          <option value="{{ c }}" {{ 'selected' if s and s.condition_min==c }}>{{ c or 'peu importe' }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <div class="two">
+      <label>Prix max <span class="faint">(ton budget — plafond)</span>
+        <input name="price_max" type="number" step="any" value="{{ s.price_max or '' if s else '' }}"></label>
+      <label>Prix min <span class="faint">(optionnel, pour écarter les annonces bidon)</span>
+        <input name="price_min" type="number" step="any" value="{{ s.price_min or '' if s else '' }}"></label>
+    </div>
+    <div class="two">
+      <label>Vendeur
+        <select name="seller_type">
+          {% for c in ['any','private','pro'] %}
+          <option value="{{ c }}" {{ 'selected' if s and s.seller_type==c }}>{{ {'any':'peu importe','private':'particulier','pro':'pro'}[c] }}</option>{% endfor %}
+        </select></label>
+      <label>Exclure ces mots <input name="exclude_kw" value="{{ s.exclude_kw or '' if s else '' }}" placeholder="cassé, pour pièces, coque"></label>
+    </div>
+  </fieldset>
+
+  <fieldset><legend>Où tu peux aller le chercher</legend>
+    <label class="inline"><input type="checkbox" name="shipping_ok" {{ 'checked' if (s.shipping_ok if s else 1) }}>
+      Accepter aussi les annonces avec livraison (distance ignorée)</label>
+    <p class="dim">Une annonce est retenue si <b>au moins un</b> de ces trajets convient.</p>
+    <div id="origins">
+      {% for o in origins %}
+      <div class="origin">
+        <input name="o_place" value="{{ o.label }}" placeholder="EPFL, Lausanne">
+        <input name="o_min" type="number" value="{{ o.max_minutes|int }}"> min en
+        <select name="o_mode">{% for m in ['foot','bike','transit','car'] %}
+          <option value="{{ m }}" {{ 'selected' if o.mode==m }}>{{ {'foot':'à pied','bike':'vélo','transit':'transports','car':'voiture'}[m] }}</option>{% endfor %}</select>
+        <button type="button" onclick="this.parentNode.remove()">×</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" onclick="addOrigin()">+ ajouter un lieu</button>
+  </fieldset>
+
+  <fieldset><legend>Sites</legend>
+    {% for src in all_sources %}
+      <label class="inline"><input type="checkbox" name="sources" value="{{ src }}"
+        {{ 'checked' if not picked or src in picked }}> {{ src }}</label>
+    {% endfor %}
+    <p class="dim">Bloqués sans navigateur piloté : {{ needs_browser|join(', ') }} — voir README.</p>
+  </fieldset>
+
+  <label class="inline"><input type="checkbox" name="active" {{ 'checked' if (s.active if s else 1) }}> Recherche active (scan automatique)</label>
+  <div class="row"><button class="cta" type="submit">Enregistrer et scanner</button>
+    <a class="btn" href="{{ url_for('index') }}">Annuler</a></div>
+</form>
+
+{% if s and s.id %}
+<form method="post" action="{{ url_for('delete', sid=s.id) }}" style="margin-top:1.4rem"
+      onsubmit="return confirm('Supprimer « {{ s.name }} » ?\n\nLes annonces déjà vues restent dans le catalogue.')">
+  <button class="danger">Supprimer cette recherche</button>
+</form>
+{% endif %}
+
+<template id="tpl">
+  <div class="origin">
+    <input name="o_place" placeholder="EPFL, Lausanne">
+    <input name="o_min" type="number" value="20"> min en
+    <select name="o_mode"><option value="foot">à pied</option><option value="bike">vélo</option>
+      <option value="transit">transports</option><option value="car" selected>voiture</option></select>
+    <button type="button" onclick="this.parentNode.remove()">×</button>
+  </div>
+</template>
+<script>
+function addOrigin(){ document.getElementById('origins')
+  .appendChild(document.getElementById('tpl').content.cloneNode(true)); }
+if(!document.querySelector('.origin')) addOrigin();
+</script>
+{% endblock %}

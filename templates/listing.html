@@ -1,0 +1,170 @@
+{% extends "base.html" %}{% block body %}
+<p class="dim"><a href="{{ back }}">← Retour</a></p>
+
+<div class="detail">
+  <div class="detail-media">
+    {% set shots = images if images else ([l.image] if l.image else []) %}
+    {% if shots %}
+      <div class="gallery">
+        <img id="shot" src="{{ shots[0] }}" class="detail-img" alt="{{ l.title }}">
+        {% if shots|length > 1 %}
+          <button class="navbtn prev" onclick="step(-1)" aria-label="Précédente">‹</button>
+          <button class="navbtn next" onclick="step(1)" aria-label="Suivante">›</button>
+          <span class="counter"><span id="idx">1</span>/{{ shots|length }}</span>
+        {% endif %}
+      </div>
+      {% if shots|length > 1 %}
+      <div class="thumbs">
+        {% for u in shots %}
+          <img src="{{ u }}" class="thumb {{ 'on' if loop.index0 == 0 }}" data-i="{{ loop.index0 }}"
+               onclick="show({{ loop.index0 }})" alt="">
+        {% endfor %}
+      </div>
+      <script>
+        const SHOTS = {{ shots|tojson }};
+        let cur = 0;
+        function show(i){
+          cur = (i + SHOTS.length) % SHOTS.length;
+          document.getElementById('shot').src = SHOTS[cur];
+          document.getElementById('idx').textContent = cur + 1;
+          document.querySelectorAll('.thumbs .thumb').forEach(t =>
+            t.classList.toggle('on', +t.dataset.i === cur));
+        }
+        function step(d){ show(cur + d); }
+        document.addEventListener('keydown', e => {
+          if (e.key === 'ArrowLeft') step(-1);
+          if (e.key === 'ArrowRight') step(1);
+        });
+      </script>
+      {% endif %}
+    {% else %}<div class="detail-img placeholder">pas d'image</div>{% endif %}
+  </div>
+
+  <div class="detail-body">
+    <h1>{{ title }}</h1>
+
+    <div class="langbar">
+      <a class="lang {{ 'on' if lang in ('', 'orig') }}"
+         href="{{ url_for('listing', lid=l.id, lang='orig') }}"
+         title="{{ l.title }}">original{% if l.lang %} · {{ l.lang }}{% endif %}</a>
+      {% for c in ('fr', 'en') %}
+        {% if c != l.lang %}
+        <a class="lang {{ 'on' if lang == c }}" href="{{ url_for('listing', lid=l.id, lang=c) }}">
+          {{ LANGS[c] }}{% if c not in ready %} <i class="faint">·</i>{% endif %}</a>
+        {% endif %}
+      {% endfor %}
+      {% for c in ready %}{% if c not in ('fr', 'en') and c != l.lang %}
+        <a class="lang {{ 'on' if lang == c }}" href="{{ url_for('listing', lid=l.id, lang=c) }}">{{ LANGS.get(c, c) }}</a>
+      {% endif %}{% endfor %}
+      <select class="lang more" onchange="if(this.value) location.href=this.value">
+        <option value="">+ autre langue</option>
+        {% for c, name in LANGS.items() %}{% if c not in ready and c != l.lang %}
+          <option value="{{ url_for('listing', lid=l.id, lang=c) }}">{{ name }}</option>
+        {% endif %}{% endfor %}
+      </select>
+    </div>
+    {% if translated %}<p class="faint langnote">Traduction automatique — l'original reste
+      accessible d'un clic ; c'est lui qui fait foi.</p>{% endif %}
+
+    <div class="price-row">
+      <span class="price big">{{ l.price|money(l.currency) }}</span>
+      {% if l.auction_end %}<span class="chip">{{ 'enchère + achat direct' if l.price_type != 'auction' else 'enchère' }}</span>{% endif %}
+      {% if l.shipping %}<span class="chip">livraison {{ l.shipping_cost|money(l.currency) if l.shipping_cost else 'incluse' }}</span>
+      {% else %}<span class="chip">retrait sur place</span>{% endif %}
+    </div>
+
+    {% if l.auction_end %}
+    <div class="auction {{ 'urgent' if (l.auction_end - now) < 7200 and (l.auction_end - now) > 0 }}">
+      <div><b>{{ l.auction_end|until }}</b><span class="faint"> — fin de l'enchère</span></div>
+      <div class="faint">{{ l.auction_end|dt }}{% if l.bids is not none %} · <b>{{ l.bids }}</b> offre{{ 's' if l.bids != 1 }}{% endif %}</div>
+    </div>
+    {% endif %}
+
+    <div class="seller {{ trust[0] }}">
+      <div class="row" style="justify-content:space-between">
+        <b>{{ seller_name }}</b>
+        <span class="pill {{ {'risk':'blocked','caution':'login','ok':'ok'}.get(trust[0],'empty') }}">
+          <i class="dot"></i>{{ trust[1] }}</span>
+      </div>
+      <p class="dim">{{ trust[2] }}</p>
+      {% if seller %}
+      <div class="chips">
+        {% if seller.member_since %}<span class="chip">inscrit en {{ seller.member_since }}</span>{% endif %}
+        {% if seller.listings_count %}<span class="chip">{{ seller.listings_count }} annonces</span>{% endif %}
+        {% if seller.rating_count %}<span class="chip">{{ seller.rating }}/5 · {{ seller.rating_count }} avis</span>{% endif %}
+        {% if seller.location %}<span class="chip">{{ seller.location }}</span>{% endif %}
+        {% if seller.profile_url %}<a class="chip" href="{{ seller.profile_url }}" target="_blank" rel="noopener">profil ↗</a>{% endif %}
+      </div>
+      {% endif %}
+      {% if seller_other %}
+        <details><summary class="faint">{{ seller_seen }} annonces de ce vendeur</summary>
+          <ul class="dim" style="margin:.3rem 0 0;padding-left:1.1rem">
+          {% for o in seller_other %}
+            <li><a href="{{ url_for('listing', lid=o.id) }}">{{ o.title[:52] }}</a>
+              — {{ o.price|money(o.currency) }}</li>
+          {% endfor %}</ul>
+        </details>
+      {% endif %}
+      {% if trust[0] == 'risk' %}
+      <p class="warn-note">Un compte tout neuf est le point commun de la plupart des
+        arnaques : paiement à l'avance, « je l'envoie demain ». Privilégie une remise
+        en main propre et un paiement au moment de l'échange.</p>
+      {% endif %}
+    </div>
+
+    <table class="kv">
+      <tr><td>Source</td><td>{{ l.source }}</td></tr>
+      <tr><td>Lieu</td><td>{{ l.location_raw or '—' }}{% if l.postal_code %} ({{ l.postal_code }}){% endif %}</td></tr>
+      {% if m and m.travel_minutes is not none %}
+      <tr><td>Trajet</td><td><b>{{ m.travel_minutes|round|int }} min</b> en {{ m.travel_mode }} depuis {{ m.travel_origin }}</td></tr>
+      {% endif %}
+      <tr><td>Vendeur</td><td>{{ l.seller_name or l.seller_type or '—' }}</td></tr>
+      <tr><td>État</td><td>{{ l.condition or '—' }}</td></tr>
+      {% if l.posted_at %}<tr><td>Publiée</td><td>{{ l.posted_at|ago }}</td></tr>{% endif %}
+      <tr><td>Vue</td><td>{{ l.first_seen|ago }}</td></tr>
+      {% for k, v in attrs.items() %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+    </table>
+
+    {% if prod %}
+    <div class="verdict">
+      <a href="{{ url_for('product', pid=prod.id) }}">{{ prod.canonical_name }}</a>
+      {% if prod.price_median %}
+        <div class="faint">médiane {{ prod.price_median|money('') }} sur {{ prod.n_listings }} annonces
+        {% if m and m.deal_delta is not none %}
+          — <b class="{{ 'good' if m.deal_delta < -10 else ('bad' if m.deal_delta > 10 else '') }}">{{ '%+.0f'|format(m.deal_delta) }}%</b>
+        {% endif %}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if m and m.reason %}<p class="reason">« {{ m.reason }} » — pour {{ m.search_name }}</p>{% endif %}
+
+    <div class="row" style="margin-top:1rem">
+      <a class="btn cta" href="{{ l.url }}" target="_blank" rel="noopener">Voir sur {{ l.source }} ↗</a>
+      {% if m %}<form method="post" action="{{ url_for('star', mid=m.id) }}">
+        <input type="hidden" name="want" value="{{ 0 if m.starred else 1 }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <button class="{{ '' if m.starred else 'cta' }}">{{ '★ gardé' if m.starred else '☆ garder' }}</button></form>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if l.source == 'fb_marketplace' %}
+  <p class="faint">Le lien n'ouvre l'annonce que si <b>le navigateur est connecté à Facebook</b> :
+    sans session, Facebook affiche sa page de connexion à la place. Le scan y accède via son
+    propre profil connecté — d'où l'écart.</p>
+{% endif %}
+{% if desc %}<h2>Description</h2><p class="desc">{{ desc }}</p>{% endif %}
+
+{% if similar %}
+<h2>Même produit, ailleurs</h2>
+<div class="tablewrap"><table>
+  <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th><th class="nowrap">Source</th></tr>
+  {% for o in similar %}<tr>
+    <td class="main"><a href="{{ url_for('listing', lid=o.id) }}"><span class="trunc">{{ o.title }}</span></a></td>
+    <td class="num">{{ o.price|money(o.currency) }}</td>
+    <td class="nowrap dim">{{ o.location_raw or '—' }}</td>
+    <td class="nowrap dim">{{ o.source }}</td>
+  </tr>{% endfor %}
+</table></div>
+{% endif %}
+{% endblock %}

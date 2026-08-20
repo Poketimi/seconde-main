@@ -1,0 +1,65 @@
+{% extends "base.html" %}{% block body %}
+<h1>Mes données</h1>
+<p class="sub">Ce que l'assistant a retenu de tes réponses. C'est réutilisé
+<b>automatiquement</b> pour ne pas te reposer les mêmes questions — donc corrige ici
+tout ce qui est faux. Rien de tout cela n'est envoyé aux sites d'annonces : ces
+informations ne servent qu'à construire les critères de recherche.</p>
+
+{% if not facts %}
+  <p class="emptystate">Aucune donnée enregistrée.
+    <a href="{{ url_for('assist') }}">Lancer un entretien →</a></p>
+{% else %}
+<div class="tablewrap">
+<table>
+  <tr><th>Information</th><th>Valeur</th><th class="nowrap">Portée</th>
+      <th class="nowrap">Mise à jour</th><th></th></tr>
+  {% for f in facts %}
+  <tr>
+    <td class="main">{{ f.label }}<div class="faint">{{ f.k }}</div></td>
+    <td>
+      <form class="row" method="post" action="{{ url_for('profil_edit', k=f.k) }}">
+        <input name="value" value="{{ f.value }}" style="min-width:150px">
+        <button>Corriger</button>
+      </form>
+    </td>
+    <td class="nowrap"><span class="chip">{{ 'partout' if f.scope == 'global' else 'cet objet' }}</span></td>
+    <td class="nowrap faint">{{ f.updated_at|ago }}</td>
+    <td>
+      <form method="post" action="{{ url_for('profil_delete', k=f.k) }}"
+            onsubmit="return confirm('Supprimer « {{ f.label }} » ?')">
+        <button class="danger">Supprimer</button></form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+<form method="post" action="{{ url_for('profil_wipe') }}" style="margin-top:1rem"
+      onsubmit="return confirm('Effacer TOUTES tes données personnelles ?\n\nCela ne touche pas tes recherches ni tes favoris.')">
+  <button class="danger">Tout effacer</button>
+</form>
+{% endif %}
+
+<h2>Budget du modèle d'entretien</h2>
+<div class="strip">
+  <span class="label">Dépensé</span>
+  <span class="pill {{ 'blocked' if spent >= cap else 'ok' }}"><i class="dot"></i>
+    {{ '%.3f'|format(spent) }} $ sur {{ '%.0f'|format(cap) }} $</span>
+  <span class="faint">≈ {{ ((cap - spent) / 0.011)|int }} entretiens restants ·
+    plafond glissant sur 365 jours</span>
+</div>
+{% if calls %}
+<div class="tablewrap">
+<table>
+  <tr><th class="nowrap">Quand</th><th>Modèle</th><th>Usage</th>
+      <th class="num">Entrée</th><th class="num">Sortie</th><th class="num">Coût</th></tr>
+  {% for c in calls %}<tr>
+    <td class="nowrap faint">{{ c.ts|ago }}</td><td class="dim">{{ c.model }}</td>
+    <td class="dim">{{ c.purpose }}</td>
+    <td class="num">{{ c.tokens_in }}</td><td class="num">{{ c.tokens_out }}</td>
+    <td class="num">{{ '%.5f'|format(c.cost_usd) }} $</td>
+  </tr>{% endfor %}
+</table>
+</div>
+{% endif %}
+{% endblock %}

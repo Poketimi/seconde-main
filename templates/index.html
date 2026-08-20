@@ -1,0 +1,94 @@
+{% extends "base.html" %}{% block live %}1{% endblock %}{% block body %}
+
+<div class="hero">
+  <div>
+    <h1>Accueil</h1>
+    <p class="sub">Scan automatique toutes les {{ (poll/60)|int }} minutes sur tes recherches actives.</p>
+  </div>
+  <div class="metrics">
+    <div class="metric"><b>{{ stats.listings }}</b><span>annonces vues</span></div>
+    <div class="metric"><b>{{ stats.products }}</b><span>produits</span></div>
+    <div class="metric"><b>{{ stats.matches }}</b><span>matchs</span></div>
+    <div class="metric"><b>{{ 'IA' if ai_on else '—' }}</b><span>{{ 'active' if ai_on else 'mots-clés' }}</span></div>
+  </div>
+</div>
+
+<div class="strip">
+  <span class="label">Sites</span>
+  {% for h in health %}
+    <span class="pill {{ h.status }}" title="{{ h.detail }}"><i class="dot"></i>{{ h.source }}</span>
+  {% endfor %}
+  {% if not health %}<span class="dim">aucun scan encore lancé</span>{% endif %}
+  <span class="spacer"></span>
+  <a class="btn" href="{{ url_for('sources_page') }}">
+    {{ 'Régler ' ~ down|length ~ ' problème' ~ ('s' if down|length > 1 else '') if down else 'Gérer les sites' }}</a>
+</div>
+
+<div class="assist-cta">
+  <div>
+    <b>Tu ne sais pas quoi chercher exactement ?</b>
+    <p class="dim">Décris l'objet (« une paire de ski ») : quelques questions fermées,
+      et l'assistant en déduit les bons critères.</p>
+  </div>
+  <a class="btn cta" href="{{ url_for('assist') }}">Ouvrir l'assistant</a>
+</div>
+
+<h2>Recherches</h2>
+{% if not searches %}
+  <p class="emptystate">Aucune recherche.
+    <a href="{{ url_for('search_form') }}">Décris ce que tu cherches →</a></p>
+{% endif %}
+<div class="grid">
+{% for s in searches %}
+  <div class="card {{ '' if s.active else 'off' }}">
+    <div class="card-head">
+      <h3><a href="{{ url_for('results', sid=s.id) }}">{{ s.name }}</a></h3>
+      {% if s.unseen %}<span class="badge">{{ s.unseen }}</span>{% endif %}
+    </div>
+    <p class="dim">{{ s.query }}{% if s.reference %} · réf {{ s.reference }}{% endif %}</p>
+    <div class="chips">
+      <span class="chip">{{ s.price_min|int if s.price_min else 0 }}–{{ s.price_max|int if s.price_max else '∞' }}</span>
+      {% for o in s.origins|from_json %}
+        <span class="chip">{{ o.max_minutes|int }}min {{ o.mode }} · {{ o.label }}</span>
+      {% endfor %}
+    </div>
+    <p class="faint">{{ s.n }} matchs · {{ s.last_run|ago }}</p>
+    <div class="inline-forms">
+      <form method="post" action="{{ url_for('run_now', sid=s.id) }}"><button>Scanner</button></form>
+      <form method="post" action="{{ url_for('toggle', sid=s.id) }}"><button>{{ 'Pause' if s.active else 'Activer' }}</button></form>
+      <a class="btn" href="{{ url_for('search_form', sid=s.id) }}">Éditer</a>
+      <form method="post" action="{{ url_for('delete', sid=s.id) }}"
+            onsubmit="return confirm('Supprimer « {{ s.name }} » et ses {{ s.n }} matchs ?\n\nLes annonces déjà vues restent dans le catalogue.')">
+        <button class="danger" title="Supprimer">Supprimer</button></form>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<h2>Derniers matchs</h2>
+<div class="tablewrap">
+<table>
+  <tr><th></th><th>Annonce</th><th class="num">Prix</th><th class="nowrap">Trajet</th>
+      <th class="nowrap">Source</th><th class="nowrap">Recherche</th><th></th></tr>
+  {% for r in recent %}
+  <tr>
+    <td>{% if r.image %}<img src="{{ r.image }}" class="thumb" alt="">{% endif %}</td>
+    <td class="main">
+      <a href="{{ r.url }}" target="_blank" rel="noopener"><span class="trunc">{{ r.title }}</span></a>
+      <span class="faint">{{ r.location_raw or '' }}{% if r.reason %} · {{ r.reason }}{% endif %}</span>
+    </td>
+    <td class="num">{{ r.price|money(r.currency) }}</td>
+    <td class="nowrap">{% if r.travel_minutes is not none %}{{ r.travel_minutes|round|int }}min
+        <span class="faint">{{ r.travel_origin }}</span>{% else %}{{ r.travel_origin or '—' }}{% endif %}</td>
+    <td class="nowrap dim">{{ r.source }}</td>
+    <td class="nowrap dim">{{ r.search_name }}</td>
+    <td><form method="post" action="{{ url_for('star', mid=r.id) }}">
+        <input type="hidden" name="want" value="{{ 0 if r.starred else 1 }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <button class="star">{{ '★' if r.starred else '☆' }}</button></form></td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% if not recent %}<p class="emptystate">Pas encore de match.</p>{% endif %}
+{% endblock %}

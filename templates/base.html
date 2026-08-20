@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Seconde Main{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head><body data-live="{% block live %}0{% endblock %}">
+<nav>
+  <a class="brand" href="{{ url_for('index') }}">◆ Seconde Main</a>
+  <a class="tab {{ 'on' if request.endpoint == 'index' }}" href="{{ url_for('index') }}">Accueil</a>
+  <a class="tab {{ 'on' if request.endpoint in ('catalogue','product','listing') }}"
+     href="{{ url_for('catalogue') }}">Catalogue</a>
+  <a class="tab {{ 'on' if request.endpoint == 'favoris' }}" href="{{ url_for('favoris') }}">Favoris</a>
+  <a class="tab {{ 'on' if request.endpoint in ('assist','assist_answers') }}" href="{{ url_for('assist') }}">Assistant</a>
+  <a class="tab {{ 'on' if request.endpoint == 'profil' }}" href="{{ url_for('profil') }}">Profil</a>
+  <a class="tab {{ 'on' if request.endpoint == 'crawler_page' }}" href="{{ url_for('crawler_page') }}">Crawler</a>
+  <span class="spacer"></span>
+  <a class="btn cta" href="{{ url_for('search_form') }}">+ Recherche</a>
+</nav>
+<main>
+{% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+{% block body %}{% endblock %}
+</main>
+
+<div id="livebar" hidden><span class="spin"></span><span id="livetext"></span></div>
+<script>
+// Poll a tiny fingerprint and reload only when it changes, so a finished scan
+// or a completed login appears without touching the keyboard.
+(function () {
+  let known = null, busy = false;
+  const bar = document.getElementById('livebar');
+  const txt = document.getElementById('livetext');
+  const typing = () => {
+    const a = document.activeElement;
+    return a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA');
+  };
+  // Auto-reload is OPT-IN. It used to be opt-out, which meant detail pages
+  // reloaded while you were reading them: clicking an outgoing link raced the
+  // reload, and Safari cancels a pending new tab when its opener navigates.
+  // Only list-style pages, where new data is the point, ask for it.
+  const LIVE = document.body.dataset.live === "1";
+  const NO_RELOAD = !LIVE;
+  async function tick() {
+    try {
+      const r = await fetch('{{ url_for("api_status") }}', {cache: 'no-store'});
+      if (!r.ok) return;
+      const s = await r.json();
+      const active = (s.scanning && s.scanning.length) || s.login_running;
+      if (active) {
+        bar.hidden = false;
+        txt.textContent = s.login_running
+          ? 'Connexion ' + (s.login_site || '') + ' — ' + (s.login_message || '')
+          : 'Scan en cours : ' + s.scanning.join(', ');
+      } else {
+        bar.hidden = true;
+      }
+      if (known === null) { known = s.v; return; }
+      // never yank the page out from under someone filling in a form
+      if (s.v !== known && !busy && !NO_RELOAD && !typing()) { busy = true; location.reload(); }
+    } catch (e) { /* serveur redémarre : on réessaiera */ }
+  }
+  tick();
+  setInterval(tick, 3000);
+})();
+</script>
+</body></html>

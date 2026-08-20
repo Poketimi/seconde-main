@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block body %}
+{% set steps = {'questions': ["Lecture de ta demande",
+                              "Choix des questions qui changent vraiment le choix",
+                              "Mise en forme"],
+                'relance':   ["Relecture de tes réponses",
+                              "Recherche des précisions utiles"],
+                'criteres':  ["Traduction en critères concrets",
+                              "Sélection des modèles à chercher",
+                              "Vérification des marchés proposés"]} %}
+<div class="waiting">
+  <div class="spin big"></div>
+  <h1>{{ {'questions':'Préparation des questions',
+          'relance':'On précise un point',
+          'criteres':'Construction de la recherche'}.get(stage, 'Un instant') }}</h1>
+  <p class="sub">« {{ query }} »</p>
+  <ul class="steps">
+    {% for s in steps.get(stage, ["Traitement"]) %}<li>{{ s }}</li>{% endfor %}
+  </ul>
+  <p class="faint" id="elapsed">quelques secondes…</p>
+  <noscript><p><a class="btn" href="{{ next }}">Rafraîchir</a></p></noscript>
+</div>
+<script>
+(function () {
+  const started = Date.now();
+  const el = document.getElementById('elapsed');
+  const items = [...document.querySelectorAll('.steps li')];
+  let i = 0;
+  setInterval(() => {                       // light progress feel, no fake bar
+    if (i < items.length) items[i++].classList.add('done');
+  }, 3000);
+  setInterval(() => {
+    const s = Math.round((Date.now() - started) / 1000);
+    el.textContent = s > 45 ? s + 's — le modèle est lent, on attend encore'
+                            : s + 's';
+  }, 1000);
+  async function poll() {
+    try {
+      const r = await fetch('{{ url_for("assist_status") }}', {cache: 'no-store'});
+      const j = await r.json();
+      if (j.ready) location.href = '{{ next }}';
+    } catch (e) { /* on réessaie */ }
+  }
+  setInterval(poll, 1500);
+  poll();
+})();
+</script>
+{% endblock %}

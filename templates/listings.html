@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block body %}
+<h1>Toutes les annonces vues</h1>
+<form class="row"><input name="q" value="{{ q }}" placeholder="filtrer…"><button>Chercher</button></form>
+<table><tr><th></th><th>Titre</th><th class="num">Prix</th><th>Lieu</th><th>Source</th><th>Vue</th></tr>
+{% for l in rows %}<tr>
+  <td>{% if l.image %}<img src="{{ l.image }}" class="thumb">{% endif %}</td>
+  <td><a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title[:80] }}</a></td>
+  <td class="num">{{ l.price|money(l.currency) }}</td><td>{{ l.location_raw or '' }}</td>
+  <td>{{ l.source }}</td><td class="dim">{{ l.first_seen|ago }}</td>
+</tr>{% endfor %}</table>
+{% endblock %}

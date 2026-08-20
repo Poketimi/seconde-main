@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block body %}
+<div class="hero">
+  <div>
+    <h1>Modèles cherchés — {{ s.name }}</h1>
+    <p class="sub">Chaque modèle est cherché <b>par son nom</b> sur chaque site.
+      Le filtrage est strict : « Head Kore 93 » ne remonte pas pour « Head Kore 99 ».</p>
+  </div>
+  <a class="btn" href="{{ url_for('results', sid=s.id) }}">← Résultats</a>
+</div>
+
+<div class="tablewrap">
+<table>
+  <tr><th>Modèle</th><th>Pourquoi</th><th class="num">Annonces</th><th class="nowrap">État</th><th></th></tr>
+  {% for t in rows %}
+  <tr {{ 'style=opacity:.5' if not t.active }}>
+    <td class="main"><b>{{ t.name }}</b></td>
+    <td class="dim">{{ t.why or '' }}</td>
+    <td class="num">{{ t.n }}</td>
+    <td class="nowrap"><span class="pill {{ 'ok' if t.active else 'empty' }}"><i class="dot"></i>
+      {{ 'actif' if t.active else 'en pause' }}</span></td>
+    <td>
+      <div class="inline-forms">
+        <form method="post" action="{{ url_for('target_toggle', tid=t.id) }}">
+          <button>{{ 'Pause' if t.active else 'Activer' }}</button></form>
+        <form method="post" action="{{ url_for('target_delete', tid=t.id) }}"
+              onsubmit="return confirm('Retirer « {{ t.name }} » ?')">
+          <button class="danger">Retirer</button></form>
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% if not rows %}
+  <p class="emptystate">Aucun modèle : la recherche utilise le mot-clé brut.
+    <a href="{{ url_for('search_form', sid=s.id) }}">En ajouter →</a></p>
+{% endif %}
+
+<form class="row" method="post" action="{{ url_for('target_add', sid=s.id) }}" style="margin-top:1rem">
+  <input name="name" placeholder="Ajouter un modèle, ex. Head Kore 99" style="min-width:260px">
+  <button class="cta">Ajouter</button>
+</form>
+{% endblock %}

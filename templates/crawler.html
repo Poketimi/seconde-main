@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% block live %}1{% endblock %}{% block body %}
+<h1>Crawler</h1>
+<p class="sub">Ce robot s'identifie, lit <code>robots.txt</code> et s'arrête quand un site
+refuse. Il ne contourne rien : pas de rotation d'IP, pas d'empreinte falsifiée, pas de
+résolution de CAPTCHA. Un opérateur peut le reconnaître et le bloquer — et s'il le fait,
+il reste bloqué.</p>
+
+<div class="strip"><span class="label">Identité</span><code>{{ ua }}</code></div>
+
+<h2>Domaines</h2>
+<div class="tablewrap"><table>
+  <tr><th>Domaine</th><th class="nowrap">robots.txt</th><th class="num">Délai</th>
+      <th class="num">Sitemaps</th><th class="nowrap">État</th><th>Note</th></tr>
+  {% for d in doms %}
+  <tr>
+    <td class="nowrap"><b>{{ d.domain }}</b></td>
+    <td class="nowrap dim">{{ d.robots }}</td>
+    <td class="num">{{ d.delay|round|int }}s</td>
+    <td class="num">{{ d.sitemaps }}</td>
+    <td class="nowrap">
+      {% if d.denied_min > 0 %}<span class="pill blocked"><i class="dot"></i>en retrait {{ d.denied_min|round|int }}min</span>
+      {% else %}<span class="pill ok"><i class="dot"></i>actif</span>{% endif %}
+      {% if d.streak %}<span class="faint"> ×{{ d.streak }}</span>{% endif %}
+    </td>
+    <td class="dim"><span class="trunc">{{ d.note }}</span></td>
+  </tr>
+  {% endfor %}
+</table></div>
+
+{% if denied %}
+<h2>Sites qui refusent ce robot</h2>
+<div class="tablewrap"><table>
+  <tr><th>Site</th><th>Raison</th></tr>
+  {% for k, v in denied.items() %}
+  <tr><td class="nowrap"><b>{{ k }}</b></td><td class="dim">{{ v }}</td></tr>
+  {% endfor %}
+</table></div>
+<p class="faint">Aucun adaptateur n'est enregistré pour ces sites : un refus explicite
+n'est pas un obstacle à contourner. Si l'un d'eux ouvre une API, un flux ou une
+autorisation, il suffira de la brancher ici.</p>
+{% endif %}
+
+<h2>Journal des requêtes</h2>
+<p class="dim">Tout ce que le robot a demandé, dans l'ordre. Délai minimum imposé :
+{{ min_delay|round|int }}s par domaine, plus le <code>crawl-delay</code> du site s'il est plus long.</p>
+<div class="tablewrap"><table>
+  <tr><th class="nowrap">Quand</th><th class="nowrap">Code</th><th class="num">Taille</th>
+      <th class="nowrap">Cache</th><th>URL</th><th>Note</th></tr>
+  {% for r in log %}
+  <tr>
+    <td class="nowrap faint">{{ r.ts|ago }}</td>
+    <td class="nowrap"><span class="pill {{ 'ok' if r.status in ('200','304') else 'blocked' }}">
+      <i class="dot"></i>{{ r.status }}</span></td>
+    <td class="num dim">{{ r.bytes }}</td>
+    <td class="nowrap faint">{{ '304' if r.cached else '' }}</td>
+    <td class="dim"><span class="trunc">{{ r.url }}</span></td>
+    <td class="dim"><span class="trunc">{{ r.note }}</span></td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% endblock %}

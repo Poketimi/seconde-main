@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block body %}
+<h1>Favoris</h1>
+<p class="sub">Les annonces que tu as gardées avec ★. Elles restent ici même quand
+la recherche d'origine est supprimée.</p>
+{% if not rows %}<p class="emptystate">Rien de gardé pour l'instant — clique ☆ sur une annonce.</p>{% endif %}
+<div class="grid">
+{% for r in rows %}
+  <div class="card listing">
+    {% if r.image %}<a href="{{ url_for('listing', lid=r.listing_id) }}"><img src="{{ r.image }}" class="cover" alt=""></a>{% endif %}
+    <h3><a href="{{ url_for('listing', lid=r.listing_id) }}">{{ r.title }}</a></h3>
+    <div class="price">{{ r.price|money(r.currency) }}</div>
+    {% if r.auction_end %}<p class="dim">enchère {{ r.auction_end|until }}{% if r.bids is not none %} · {{ r.bids }} offres{% endif %}</p>{% endif %}
+    <p class="dim">{{ r.location_raw or '' }}
+      {% if r.travel_minutes is not none %} · {{ r.travel_minutes|round|int }}min de {{ r.travel_origin }}{% endif %}</p>
+    <div class="chips"><span class="chip">{{ r.source }}</span><span class="chip">{{ r.search_name }}</span></div>
+    <div class="row">
+      <a class="btn" href="{{ url_for('listing', lid=r.listing_id) }}">Détails</a>
+      <form method="post" action="{{ url_for('star', mid=r.mid) }}">
+        <input type="hidden" name="want" value="{{ 0 if r.starred else 1 }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}"><button class="danger">Retirer</button></form>
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}
