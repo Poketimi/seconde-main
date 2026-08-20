@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 77 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 81 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -42,14 +42,39 @@ Mesuré, pas supposé. `/sources` dans l'app affiche l'état courant.
 | **ricardo** | ⚠️ sitemap | 50 000 URLs publiées pour les crawlers, mais **sans prix** |
 | **facebook marketplace** | ✅ | via un vrai navigateur connecté à ton compte |
 | **ebay** | 🔑 API | officielle et gratuite, 5000 requêtes/jour — demande des clés |
-| leboncoin | ⛔ | `robots.txt` l'interdit — voir ci-dessous |
-| autoscout24 / motoscout24 / immoscout24 | ⛔ | idem |
+| **leboncoin** | 📬 alerte | jamais crawlé — lu dans les alertes e-mail qu'il envoie |
+| **autoscout24 / motoscout24 / immoscout24** | 📬 alerte | idem |
 
 **Les quatre sites refusés le restent.** Leurs `robots.txt` interdisent l'accès automatisé :
 leboncoin s'ouvre sur une interdiction en toutes lettres et n'autorise nommément que
 quelques robots, sans règle `User-agent: *`. Ce n'est pas un obstacle technique à
 contourner, c'est un refus à respecter — le code les écarte explicitement
 (`sources.DENIED_BY_OPERATOR`) au lieu de chercher une autre route.
+
+### La porte que leboncoin laisse ouverte
+
+Leur `robots.txt` est sans ambiguïté, et il n'a pas de groupe `User-agent: *` — chaque
+groupe vise un robot nommé :
+
+> It's forbidden to use search robots or other automatic methods to access Leboncoin.fr.
+> Access is only permitted with special permission from Leboncoin.fr.
+
+Ce refus tient : **aucune requête ne part vers ces sites**. Mais ils proposent leurs
+**propres alertes**. Tu enregistres la recherche chez eux, tu actives la notification par
+e-mail, et l'app lit ces messages en IMAP (`mailbox.py`). C'est la même donnée obtenue à
+l'envers : ce n'est plus nous qui allons la chercher, c'est le site qui l'envoie, à sa
+cadence et de son plein gré. Aucun `robots.txt` n'entre en jeu.
+
+Ça vaut aussi pour les trois Scout24, qui refusent ce robot et envoient les mêmes alertes.
+
+**Mot de passe d'application obligatoire**, jamais celui du compte : Gmail, iCloud et Proton
+en génèrent un dédié et révocable. L'accès est en **lecture seule** — `BODY.PEEK` et
+`readonly=True`, donc rien n'est marqué lu, déplacé ni supprimé. Un libellé dédié évite de
+parcourir toute la boîte.
+
+L'invariant du code a changé en conséquence : ce n'est plus « un site refusé n'a aucun
+adaptateur » mais « un site refusé n'a aucun adaptateur **qui le crawle** ». Un test vérifie
+que `mailbox.py` n'importe ni `crawler`, ni `browser`, ni `net`.
 
 En pratique on perd moins qu'il n'y paraît : **tutti appartient au même groupe (SMG) que
 les Scout24** et publie les mêmes catégories. `moto yamaha` y sort des BMW F800GS,
@@ -288,6 +313,7 @@ automatique ne reçoive pas une page de connexion.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `ai.py` | modèles, lots, bascule entre comptes, budget |
 | `ebay.py` | API officielle eBay (OAuth + Browse) |
+| `mailbox.py` | alertes e-mail IMAP : leboncoin, Scout24 |
 | `i18n.py` | traductions |
 | `settings.py` | fournisseur / clé / modèles, réglables à chaud |
 | `auth.py` | le compte et le mot de passe |
@@ -296,7 +322,7 @@ automatique ne reçoive pas une page de connexion.
 | `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
 | `reference.py` | prix neuf de référence |
 | `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
-| `test_core.py` | 77 suites, sans réseau |
+| `test_core.py` | 81 suites, sans réseau |
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.

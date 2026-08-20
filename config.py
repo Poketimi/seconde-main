@@ -106,6 +106,16 @@ ALT_API_KEY  = os.environ.get("ALT_API_KEY", "").strip()
 ALT_BASE_URL = os.environ.get("ALT_BASE_URL", _abase).rstrip("/")
 ALT_MODEL    = os.environ.get("ALT_MODEL", _amodel)
 
+# --- alertes e-mail ---------------------------------------------------
+# Les sites qui refusent ce crawler envoient volontiers leurs propres alertes.
+# Les lire dans ta boîte, c'est la même donnée sans une seule requête chez eux.
+# Mot de passe D'APPLICATION uniquement, et l'accès est en lecture seule.
+IMAP_HOST     = os.environ.get("IMAP_HOST", "").strip()
+IMAP_PORT     = int(os.environ.get("IMAP_PORT", 993))
+IMAP_USER     = os.environ.get("IMAP_USER", "").strip()
+IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD", "")
+IMAP_FOLDER   = os.environ.get("IMAP_FOLDER", "INBOX").strip()
+
 # --- eBay -------------------------------------------------------------
 # Pas du crawl : une API officielle, gratuite, 5000 requêtes/jour. Les
 # identifiants se créent sur https://developer.ebay.com/my/keys (compte

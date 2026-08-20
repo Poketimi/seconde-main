@@ -20,7 +20,7 @@ STATUS (probed 2026-08-19 from CH):
 """
 import re, json, time
 from urllib.parse import quote_plus, urljoin
-import net, browser, geo, crawler, ebay as ebay_api
+import net, browser, geo, crawler, ebay as ebay_api, mailbox
 
 ADAPTERS = {}
 # Sites that answer no plain HTTP client: they sit behind Cloudflare Turnstile
@@ -567,6 +567,32 @@ def ebay(query, spec=None):
                                ebay_api.LAST_ERROR[0] or "0 résultat")
     return rows
 
+# Les sites qui refusent le crawl mais envoient des alertes : on lit la boîte
+# mail, jamais leur site. Un seul relevé IMAP sert tous ces adaptateurs.
+_MAIL_CACHE = {"at": 0.0, "rows": []}
+
+def _mail_rows():
+    if time.time() - _MAIL_CACHE["at"] > 300:
+        _MAIL_CACHE.update(at=time.time(), rows=mailbox.fetch())
+    return _MAIL_CACHE["rows"]
+
+def _mail_adapter(site):
+    def run(query, spec=None):
+        if not mailbox.configured():
+            LAST_STATUS[site] = ("login", "alertes e-mail non configurées")
+            return []
+        terms = [t for t in re.sub(r"[^\w\s]", " ", query.lower()).split() if len(t) > 1]
+        rows = [r for r in _mail_rows() if r["source"] == site
+                and all(t in (r["title"] or "").lower() for t in terms)]
+        if not rows:
+            LAST_STATUS[site] = ("empty", mailbox.LAST_ERROR[0] or
+                                 "aucune alerte ne correspond")
+        return rows
+    return run
+
+for _site in mailbox.SITES:
+    ADAPTERS[_site] = _mail_adapter(_site)
+
 DENIED_BY_OPERATOR = {
     "leboncoin": ("robots.txt interdit explicitement l'accès automatisé et "
                   "n'autorise que Googlebot/Bingbot/Slurp — accès sur "
@@ -702,11 +728,16 @@ def demo():
                          "https://s.ch/")
     assert ld and ld[0]["price"] == 99.0 and ld[0]["url"] == "https://s.ch/p/1", ld
     assert set(NEEDS_BROWSER) <= set(ADAPTERS), "browser adapters not registered"
-    assert not (set(DENIED_BY_OPERATOR) & set(ADAPTERS)), \
-        "un site qui refuse ce robot ne doit avoir aucun adaptateur"
-    print("sources ok: crawler =", ["anibis", "tutti", "ricardo(sitemap)", "leboncoin"],
+    # Un site qui refuse le crawl peut avoir un adaptateur, à condition qu'il
+    # n'aille jamais chez lui : leboncoin & co passent par les alertes e-mail
+    # que le site nous envoie. L'invariant n'est plus « pas d'adaptateur »,
+    # c'est « aucun adaptateur qui crawle ».
+    for _s in set(DENIED_BY_OPERATOR) & set(ADAPTERS):
+        assert _s in mailbox.SITES, f"{_s} refuse le crawl et a pourtant un adaptateur web"
+    print("sources ok: crawler =", ["anibis", "tutti", "ricardo(sitemap)"],
           "| session utilisateur =", sorted(NEEDS_BROWSER),
-          "| refusés =", sorted(DENIED_BY_OPERATOR))
+          "| par alerte e-mail =", sorted(mailbox.SITES),
+          "| jamais crawlés =", sorted(DENIED_BY_OPERATOR))
 
 if __name__ == "__main__":
     demo()

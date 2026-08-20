@@ -19,8 +19,10 @@ FIELDS = ("AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY",
           # abonnement Claude Code, entretien de l'assistant uniquement
           "CLAUDE_CLI", "CLAUDE_CLI_MODEL",
           # eBay : API officielle, pas du crawl
-          "EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "EBAY_MARKETPLACE")
-SECRET = ("AI_API_KEY", "ALT_API_KEY", "EBAY_CLIENT_SECRET")
+          "EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "EBAY_MARKETPLACE",
+          # alertes e-mail : la voie légitime vers leboncoin & les Scout24
+          "IMAP_HOST", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD", "IMAP_FOLDER")
+SECRET = ("AI_API_KEY", "ALT_API_KEY", "EBAY_CLIENT_SECRET", "IMAP_PASSWORD")
 
 def stored():
     return {r["k"]: r["v"] for r in db.q("SELECT k,v FROM settings")}
@@ -28,6 +30,11 @@ def stored():
 def _coerce(k, v):
     if k == "CLAUDE_CLI":
         return str(v).strip() in ("1", "true", "on", "oui")
+    if k == "IMAP_PORT":
+        try:
+            return int(str(v).strip())
+        except ValueError:
+            return None
     if k == "SMART_BUDGET_USD":
         try:
             return float(str(v).replace(",", "."))
@@ -89,6 +96,9 @@ def current():
             "EBAY_CLIENT_ID": config.EBAY_CLIENT_ID,
             "EBAY_CLIENT_SECRET": masked(config.EBAY_CLIENT_SECRET),
             "EBAY_MARKETPLACE": config.EBAY_MARKETPLACE,
+            "IMAP_HOST": config.IMAP_HOST, "IMAP_PORT": config.IMAP_PORT,
+            "IMAP_USER": config.IMAP_USER, "IMAP_FOLDER": config.IMAP_FOLDER,
+            "IMAP_PASSWORD": masked(config.IMAP_PASSWORD),
             "from_db": sorted(stored().keys())}
 
 def _reachable(url, timeout=1.0):
@@ -131,6 +141,9 @@ def connect(which, key=""):
                            f"Va dans Connexions et clique « Se connecter » — "
                            f"tout se fait depuis l'app. ({why[:60]})")
         return True, "Abonnement Claude Code branché pour l'entretien de l'assistant."
+    if which == "mail":
+        import mailbox
+        return mailbox.probe()
     if which == "ebay":
         import ebay
         if key:                       # « App ID:Cert ID » collés d'un bloc

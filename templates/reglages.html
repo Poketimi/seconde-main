@@ -20,6 +20,15 @@ redémarrer : le changement s'applique à la requête suivante.</p>
 {% endif %}
 
 <div class="connect">
+  <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard {{ 'here' if mail_ok }}">
+    <input type="hidden" name="which" value="mail">
+    <div class="ctitle">Alertes e-mail
+      {% if mail_ok %}<span class="pill ok"><i class="dot"></i>branché</span>{% endif %}</div>
+    <p class="faint">La voie vers <b>leboncoin</b> et les Scout24 : leurs propres alertes,
+      lues dans ta boîte. Réglages IMAP plus bas.</p>
+    <button>Tester la lecture</button>
+  </form>
+
   <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard {{ 'here' if ebay_ok }}">
     <input type="hidden" name="which" value="ebay">
     <div class="ctitle">eBay
@@ -104,6 +113,31 @@ redémarrer : le changement s'applique à la requête suivante.</p>
     <p class="faint">Au-delà, l'entretien retombe sur le modèle bon marché au lieu de
       s'arrêter. Un modèle absent de la table de prix est estimé au tarif le plus cher,
       pour qu'il compte quand même contre le plafond.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Alertes e-mail <span class="faint">— leboncoin, autoscout24, motoscout24, immoscout24</span></legend>
+    <p class="faint">Ces sites <b>interdisent le crawl</b> et ce refus tient. Mais ils
+      envoient volontiers leurs propres alertes : enregistre la recherche <b>chez eux</b>,
+      active la notification par e-mail, et l'app lit ces messages dans ta boîte. Aucune
+      requête ne part vers ces sites — c'est eux qui envoient.</p>
+    <p class="faint"><b>Mot de passe d'application uniquement</b>, jamais celui de ton
+      compte : Gmail, iCloud et Proton en génèrent un dédié, révocable seul. L'accès est en
+      <b>lecture seule</b> — rien n'est marqué lu, déplacé ni supprimé.</p>
+    <div class="two">
+      <label>Serveur IMAP
+        <input name="IMAP_HOST" value="{{ cur.IMAP_HOST }}" placeholder="imap.gmail.com"></label>
+      <label>Port
+        <input name="IMAP_PORT" value="{{ cur.IMAP_PORT }}" inputmode="numeric"></label>
+    </div>
+    <label>Adresse
+      <input name="IMAP_USER" value="{{ cur.IMAP_USER }}" autocomplete="off"
+             placeholder="toi@exemple.ch"></label>
+    <label>Mot de passe d'application
+      <input name="IMAP_PASSWORD" type="password" autocomplete="off"
+             placeholder="{{ cur.IMAP_PASSWORD or '····' }} — vide = on garde l'actuel"></label>
+    <label>Dossier <span class="faint">— un libellé dédié évite de parcourir toute la boîte</span>
+      <input name="IMAP_FOLDER" value="{{ cur.IMAP_FOLDER }}" placeholder="INBOX"></label>
   </fieldset>
 
   <fieldset>

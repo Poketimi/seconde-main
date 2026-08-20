@@ -29,11 +29,11 @@ if _REAL_DB.exists():
             CREATE INDEX IF NOT EXISTS idx_places_name ON places(country, name);""")
         c.executemany("INSERT INTO places VALUES(?,?,?,?,?,?)", rows)
 
-import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings, auth, ebay
+import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings, auth, ebay, mailbox
 crawler.init()          # crawl_cache / crawl_log / domain_state on the scratch db
 
 def test_modules():
-    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo(); auth.demo(); ebay.demo()
+    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo(); auth.demo(); ebay.demo(); mailbox.demo()
 
 def test_end_to_end():
     """Whole pipeline on a fake source: no network, fully deterministic."""
@@ -393,10 +393,19 @@ def test_robots_prose_and_allowlists_are_obeyed():
     crawler._robots_text.pop("unknown.test", None)
     assert crawler.policy("unknown.test")[0] is False, "sans robots.txt: on s'abstient"
 
-def test_leboncoin_has_no_adapter():
-    """Their robots.txt forbids automated access in writing."""
-    assert "leboncoin" not in sources.ADAPTERS
-    assert "leboncoin" in sources.DENIED_BY_OPERATOR
+def test_leboncoin_is_never_crawled():
+    """Their robots.txt forbids automated access in writing.
+
+    leboncoin does have an adapter again, but it reads the alert emails
+    leboncoin itself sends -- no request ever goes to their site. The rule
+    being pinned is "never crawled", which is what their robots.txt asks for,
+    not "no code path", which was only ever a proxy for it.
+    """
+    assert "leboncoin" in sources.DENIED_BY_OPERATOR, "the refusal must stand"
+    assert "leboncoin" in mailbox.SITES, "its adapter must be the mail one"
+    # allowed() returns (ok, reason); asserting on the tuple alone is always true
+    ok, why = crawler.allowed("https://www.leboncoin.fr/recherche?text=velo")
+    assert ok is False, f"the crawler would fetch leboncoin: {why}"
 
 def test_crawler_stops_on_denial():
     """403/429/CAPTCHA is a decision to respect, not an obstacle to route around."""
@@ -414,11 +423,12 @@ def test_crawler_stops_on_denial():
     assert crawler.looks_denied("Please enable JS and disable any ad blocker")
     assert not crawler.looks_denied("<p>Vélo de course 500 CHF Lausanne</p>" * 20)
 
-def test_no_adapter_for_sites_that_refuse():
-    """A denied site must have no code path at all, not a fallback route."""
+def test_no_web_adapter_for_sites_that_refuse():
+    """A denied site may only be reached by something it sends us itself."""
     for name in sources.DENIED_BY_OPERATOR:
-        assert name not in sources.ADAPTERS, \
-            f"{name} refuse ce robot: aucun adaptateur ne doit exister"
+        if name in sources.ADAPTERS:
+            assert name in mailbox.SITES, \
+                f"{name} refuse ce robot: seul un adaptateur e-mail est permis"
 
 def test_crawl_delay_never_below_our_floor():
     """A site may permit a fast crawl; we still go slowly."""
@@ -1594,6 +1604,69 @@ def test_interrupted_scan_does_not_leave_matches_provisional():
            (engine.PENDING, time.time(), good))
     assert engine.finish_pending(older_than=600) == (0, 0), \
         "a fresh phase-1 row was judged while its scan was still going"
+
+
+# --- email alerts: the legitimate route into sites that refuse the crawler ---
+
+def test_refused_sites_are_never_crawled_even_with_an_adapter():
+    """leboncoin now has an adapter. It must not reach leboncoin."""
+    import ast, inspect
+    for site in sources.DENIED_BY_OPERATOR:
+        assert site in mailbox.SITES, \
+            f"{site} refuses crawling but has a non-mail adapter"
+    # the mail reader must not import the crawl layer at all
+    tree = ast.parse(inspect.getsource(mailbox))
+    imported = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            imported |= {a.name.split(".")[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom) and n.module:
+            imported.add(n.module.split(".")[0])
+    assert not ({"crawler", "browser", "net"} & imported), \
+        f"the mail reader reaches the network on its own: {imported}"
+    # and asking leboncoin with no mailbox configured must stay silent, not crawl
+    saved = config.IMAP_HOST
+    try:
+        config.IMAP_HOST = ""
+        assert sources.ADAPTERS["leboncoin"]("velo") == []
+        assert sources.LAST_STATUS["leboncoin"][0] == "login"
+    finally:
+        config.IMAP_HOST = saved
+
+def test_alert_email_is_parsed_into_listings():
+    html = """<table>
+      <tr><td><a href="https://www.leboncoin.fr/ad/velos/2891234567?utm_source=alerte">
+        Vélo de course Cannondale CAAD13</a><span>1\u00a0250 €</span> Annemasse</td></tr>
+      <tr><td><a href="https://www.leboncoin.fr/ad/motos/2891999888">Yamaha Tracer 900</a>
+        <span>6\u202f900 €</span></td></tr>
+      <tr><td><a href="https://tracking.example.com/click">Se désabonner</a></td></tr>
+    </table>"""
+    rows = mailbox.parse("leboncoin", html)
+    assert len(rows) == 2, [r["title"] for r in rows]
+    assert rows[0]["price"] == 1250.0, rows[0]["price"]
+    assert rows[1]["price"] == 6900.0, rows[1]["price"]
+    assert rows[0]["currency"] == "EUR" and rows[0]["country"] == "FR"
+    assert "?" not in rows[0]["url"], "tracking parameters kept in the url"
+    # a title carrying digits must not be swallowed into the price
+    solo = mailbox.parse("leboncoin",
+        '<a href="https://www.leboncoin.fr/ad/x/2891234567">CAAD13</a><span>1 250 €</span>')
+    assert solo[0]["price"] == 1250.0, solo[0]["price"]
+    # no price shown means no price invented
+    bare = mailbox.parse("leboncoin",
+        '<a href="https://www.leboncoin.fr/ad/x/2891234500">Titre seul</a>')
+    assert bare[0]["price"] is None
+
+def test_mail_listings_go_through_the_normal_pipeline():
+    rows = mailbox.parse("leboncoin",
+        '<a href="https://www.leboncoin.fr/ad/velos/2891234567">Vélo Cannondale</a>'
+        '<span>1 250 €</span>')
+    db.run("DELETE FROM listings WHERE url=?", (rows[0]["url"],))
+    lid, new = engine.upsert_listing(rows[0])
+    assert new
+    got = db.q("SELECT price, source, currency FROM listings WHERE id=?", (lid,), one=True)
+    assert got["price"] == 1250.0 and got["source"] == "leboncoin"
+    assert got["currency"] == "EUR"
+    db.run("DELETE FROM listings WHERE id=?", (lid,))
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
