@@ -15,6 +15,17 @@
   <a class="tab {{ 'on' if request.endpoint == 'crawler_page' }}" href="{{ url_for('crawler_page') }}">Crawler</a>
   <a class="tab {{ 'on' if request.endpoint == 'reglages' }}" href="{{ url_for('reglages') }}">Réglages</a>
   <span class="spacer"></span>
+  <form method="post" action="{{ url_for('langue') }}" class="navlang">
+    <input type="hidden" name="next" value="{{ request.full_path }}">
+    <select name="lang" onchange="this.form.submit()" title="Langue de lecture des annonces">
+      <option value="" {{ 'selected' if not ui_lang }}>langue : originale</option>
+      <option value="orig" {{ 'selected' if ui_lang == 'orig' }}>toujours l'originale</option>
+      {% for c, name in LANGS.items() %}
+        <option value="{{ c }}" {{ 'selected' if ui_lang == c }}>lire en {{ name }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button>ok</button></noscript>
+  </form>
   <a class="btn cta" href="{{ url_for('search_form') }}">+ Recherche</a>
 </nav>
 <main>

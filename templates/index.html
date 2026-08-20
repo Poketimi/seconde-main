@@ -74,7 +74,7 @@
   <tr>
     <td>{% if r.image %}<img src="{{ r.image }}" class="thumb" alt="">{% endif %}</td>
     <td class="main">
-      <a href="{{ r.url }}" target="_blank" rel="noopener"><span class="trunc">{{ r.title }}</span></a>
+      <a href="{{ r.url }}" target="_blank" rel="noopener"><span class="trunc">{{ r|tr }}</span></a>
       <span class="faint">{{ r.location_raw or '' }}{% if r.reason %} · {{ r.reason }}{% endif %}</span>
     </td>
     <td class="num">{{ r.price|money(r.currency) }}</td>

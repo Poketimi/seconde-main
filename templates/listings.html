@@ -4,7 +4,7 @@
 <table><tr><th></th><th>Titre</th><th class="num">Prix</th><th>Lieu</th><th>Source</th><th>Vue</th></tr>
 {% for l in rows %}<tr>
   <td>{% if l.image %}<img src="{{ l.image }}" class="thumb">{% endif %}</td>
-  <td><a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title[:80] }}</a></td>
+  <td><a href="{{ l.url }}" target="_blank" rel="noopener">{{ (l|tr)[:80] }}</a></td>
   <td class="num">{{ l.price|money(l.currency) }}</td><td>{{ l.location_raw or '' }}</td>
   <td>{{ l.source }}</td><td class="dim">{{ l.first_seen|ago }}</td>
 </tr>{% endfor %}</table>

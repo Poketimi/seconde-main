@@ -75,7 +75,7 @@
   <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Statut</th><th class="nowrap">État</th><th class="nowrap">Lieu</th>
       <th class="nowrap">Source</th><th class="nowrap">Vue</th></tr>
   {% for l in rows %}<tr>
-    <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l.title }}</span></a></td>
+    <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l|tr }}</span></a></td>
     <td class="num">{{ l.price|money(l.currency) }}</td>
     <td class="nowrap">{% if l.status == 'gone' %}<span class="pill empty"><i class="dot"></i>disparue</span>
       {% elif l.status == 'ended' %}<span class="pill login"><i class="dot"></i>terminée</span>

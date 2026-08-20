@@ -1113,6 +1113,37 @@ def _restore_ai(saved):
         setattr(config, k, v)
     config.AI_FALLBACKS = config.fallback_chain()
 
+def test_reading_language_applies_to_lists():
+    """The choice is global: lists must show it too, not just the detail page."""
+    import app
+    lid = _fake_listing(url="https://tr/5", title="Bergschuhe Grösse 43")
+    i18n._store(lid, "fr", "Chaussures de montagne taille 43", "Peu portées.")
+    c = app.app.test_client()
+
+    html = c.get("/catalogue?tab=annonces").get_data(as_text=True)
+    assert "Bergschuhe" in html, "original should show before any choice is made"
+
+    r = c.post("/langue", data={"lang": "fr", "next": "/catalogue?tab=annonces"})
+    assert r.status_code == 302
+    html = c.get("/catalogue?tab=annonces").get_data(as_text=True)
+    assert "Chaussures de montagne taille 43" in html, "list title not translated"
+
+    # a listing with no translation must still appear, in its own language
+    plain = _keep_listing("https://tr/6", "Vélo de course Cannondale")
+    html = c.get("/catalogue?tab=annonces").get_data(as_text=True)
+    assert "Vélo de course Cannondale" in html, "untranslated listing vanished"
+
+    # and going back to the original is one click
+    c.post("/langue", data={"lang": "orig", "next": "/catalogue?tab=annonces"})
+    html = c.get("/catalogue?tab=annonces").get_data(as_text=True)
+    assert "Bergschuhe" in html, "could not get back to the original"
+
+def _keep_listing(url, title):
+    """Like _fake_listing but without clearing what is already there."""
+    db.run("DELETE FROM listings WHERE url=?", (url,))
+    return db.run("INSERT INTO listings(url,source,title,first_seen) VALUES(?,?,?,?)",
+                  (url, "fake", title, time.time()))
+
 def test_own_provider_and_models():
     """Switching provider must retarget the endpoint, the chain and the key."""
     saved = {k: getattr(config, k) for k in settings.FIELDS}

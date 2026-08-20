@@ -169,6 +169,12 @@ côté dans `listing_i18n`. La fiche d'une annonce affiche les langues en pastil
 menu « + autre langue » pour les 15 proposées — une langue demandée est produite une fois
 puis gardée, et le choix suit la session.
 
+Le choix de langue est dans la barre du haut et vaut **partout** : listes, résultats,
+favoris, catalogue, pas seulement la fiche. Une annonce sans traduction reste affichée dans
+sa langue d'origine plutôt que de disparaître, et « toujours l'originale » revient à l'état
+initial en un clic. Le **matching n'utilise jamais les traductions** : les filtres et le
+score continuent de lire le texte publié, la traduction est un affichage.
+
 Une traduction ne coûte qu'un appel : les langues demandées sortent toutes du même, par
 lots de 5 annonces. Ouvrir une annonce en italien complète donc aussi le français et
 l'anglais s'ils manquaient, gratuitement. Le prompt interdit de traduire marques, modèles,

@@ -100,7 +100,7 @@
         <details><summary class="faint">{{ seller_seen }} annonces de ce vendeur</summary>
           <ul class="dim" style="margin:.3rem 0 0;padding-left:1.1rem">
           {% for o in seller_other %}
-            <li><a href="{{ url_for('listing', lid=o.id) }}">{{ o.title[:52] }}</a>
+            <li><a href="{{ url_for('listing', lid=o.id) }}">{{ (o|tr)[:52] }}</a>
               — {{ o.price|money(o.currency) }}</li>
           {% endfor %}</ul>
         </details>
@@ -160,7 +160,7 @@
 <div class="tablewrap"><table>
   <tr><th>Titre</th><th class="num">Prix</th><th class="nowrap">Lieu</th><th class="nowrap">Source</th></tr>
   {% for o in similar %}<tr>
-    <td class="main"><a href="{{ url_for('listing', lid=o.id) }}"><span class="trunc">{{ o.title }}</span></a></td>
+    <td class="main"><a href="{{ url_for('listing', lid=o.id) }}"><span class="trunc">{{ o|tr }}</span></a></td>
     <td class="num">{{ o.price|money(o.currency) }}</td>
     <td class="nowrap dim">{{ o.location_raw or '—' }}</td>
     <td class="nowrap dim">{{ o.source }}</td>

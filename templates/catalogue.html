@@ -41,7 +41,7 @@ les statistiques de prix disent tout de suite si une annonce est une bonne affai
     {% for l in listings %}
     <tr>
       <td>{% if l.image %}<img src="{{ l.image }}" class="thumb" alt="">{% endif %}</td>
-      <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l.title }}</span></a></td>
+      <td class="main"><a href="{{ l.url }}" target="_blank" rel="noopener"><span class="trunc">{{ l|tr }}</span></a></td>
       <td class="num">{{ l.price|money(l.currency) }}</td>
       <td class="nowrap dim">{{ l.location_raw or '—' }}</td>
       <td class="nowrap dim">{{ l.source }}</td>

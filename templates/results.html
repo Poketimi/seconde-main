@@ -48,7 +48,7 @@
 {% for r in rows %}
   <div class="card listing">
     {% if r.image %}<a href="{{ url_for('listing', lid=r.listing_id) }}"><img src="{{ r.image }}" class="cover" alt=""></a>{% endif %}
-    <h3><a href="{{ url_for('listing', lid=r.listing_id) }}">{{ r.title }}</a></h3>
+    <h3><a href="{{ url_for('listing', lid=r.listing_id) }}">{{ r|tr }}</a></h3>
     <div class="price">{{ r.price|money(r.currency) }}
       {% if r.deal_delta is not none %}
         <span class="deal {{ 'good' if r.deal_delta < -10 else ('bad' if r.deal_delta > 10 else '') }}">{{ '%+.0f'|format(r.deal_delta) }}% vs médiane</span>

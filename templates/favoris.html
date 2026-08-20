@@ -7,7 +7,7 @@ la recherche d'origine est supprimée.</p>
 {% for r in rows %}
   <div class="card listing">
     {% if r.image %}<a href="{{ url_for('listing', lid=r.listing_id) }}"><img src="{{ r.image }}" class="cover" alt=""></a>{% endif %}
-    <h3><a href="{{ url_for('listing', lid=r.listing_id) }}">{{ r.title }}</a></h3>
+    <h3><a href="{{ url_for('listing', lid=r.listing_id) }}">{{ r|tr }}</a></h3>
     <div class="price">{{ r.price|money(r.currency) }}</div>
     {% if r.auction_end %}<p class="dim">enchère {{ r.auction_end|until }}{% if r.bids is not none %} · {{ r.bids }} offres{% endif %}</p>{% endif %}
     <p class="dim">{{ r.location_raw or '' }}

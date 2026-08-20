@@ -27,12 +27,18 @@ Pour chaque entrée : détecte la langue d'origine, puis rends le titre et la
 description dans CHACUNE des langues demandées : {langs}.
 
 Règles :
-- Ne traduis JAMAIS une marque, un modèle, une référence ni une taille
-  ("Salomon QST 99", "iPhone 13 Pro", "BMW R1200RT", "27.5\"" restent tels quels).
+- Le titre DOIT être traduit comme le reste. Seuls les mots qui sont
+  littéralement une marque, un modèle ou une référence restent intacts
+  ("Salomon QST 99", "iPhone 13 Pro", "BMW R1200RT", "27.5\"").
+  Un nom commun collé à une marque se traduit quand même :
+  "Komfortsattel Yamaha Tracer 9" -> "Selle confort Yamaha Tracer 9",
+  "Bergschuhe Grösse 43" -> "Chaussures de montagne taille 43".
 - Garde les nombres, prix et années à l'identique, mais traduis le MOT d'unité
   qui les accompagne : "65 Zoll" -> "65 pouces" / "65 inches".
-- Si l'entrée est déjà dans une des langues demandées, recopie le texte tel quel
-  pour cette langue, sans le reformuler.
+- Si l'entrée est déjà dans une des langues demandées, recopie-la telle quelle
+  pour CETTE langue seulement. Les autres langues demandées doivent quand même
+  être traduites : une annonce en anglais donne un "fr" en français, pas une
+  copie de l'anglais.
 - Traduis, n'invente pas : pas de résumé, pas de commentaire, pas d'ajout.
 - Une description vide reste vide ("").
 
@@ -60,6 +66,30 @@ def have(lid):
 def get(lid, lang):
     return db.q("SELECT * FROM listing_i18n WHERE listing_id=? AND lang=?",
                 (lid, lang), one=True)
+
+def _id_of(row):
+    """Les listes de matchs portent listing_id, les listes d'annonces id."""
+    keys = row.keys() if hasattr(row, "keys") else row
+    for k in ("listing_id", "id"):
+        if k in keys and row[k]:
+            return row[k]
+    return None
+
+def title_for(row, lang):
+    """Titre à afficher dans une liste. Retombe sur l'original sans bruit.
+
+    ponytail: une requête par ligne, mémoïsée par requête HTTP côté app.py.
+    Sur SQLite en local et ~50 lignes c'est invisible ; si une page passe à
+    des milliers de lignes, remplacer par un LEFT JOIN dans la requête.
+    """
+    orig = row["title"] if "title" in (row.keys() if hasattr(row, "keys") else row) else None
+    if not lang or lang == "orig":
+        return orig
+    lid = _id_of(row)
+    if not lid:
+        return orig
+    r = get(lid, lang)
+    return (r["title"] or orig) if r else orig
 
 def view(l, lang):
     """(titre, description, traduit?) pour l'affichage.
@@ -161,6 +191,11 @@ def demo():
     assert view(l, "de")[2] is False, "la langue d'origine n'est pas une traduction"
     assert view(l, "fr")[2] is False, "rien en cache => on rend l'original"
     assert _example(("fr", "en")).count("title") == 2
+    assert _id_of({"listing_id": 7, "title": "x"}) == 7
+    assert _id_of({"id": 3, "title": "x"}) == 3
+    assert _id_of({"title": "x"}) is None
+    assert title_for({"id": 3, "title": "x"}, "orig") == "x"
+    assert title_for({"title": "x"}, "fr") == "x", "sans id, on rend l'original"
     # le gabarit JSON est plein d'accolades : .format ne doit pas s'y casser
     assert '"i":0' in SYSTEM.format(langs="x", example="y")
     print("i18n ok")

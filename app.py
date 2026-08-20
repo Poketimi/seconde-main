@@ -1,7 +1,7 @@
 """Flask UI. Local, single user, no auth on purpose."""
 import json, time, threading
 from flask import (Flask, render_template, request, redirect, url_for, jsonify,
-                   flash, abort, session)
+                   flash, abort, session, g)
 import db, geo, ai, sources, engine, config, browser, profile, sellers, reference, crawler, i18n, settings
 
 app = Flask(__name__)
@@ -32,7 +32,32 @@ def reject_sort(args):
 
 @app.context_processor
 def inject_now():
-    return {"now": time.time()}
+    return {"now": time.time(), "ui_lang": session.get("lang") or "",
+            "LANGS": i18n.LANGS}
+
+@app.template_filter("tr")
+def tr(row):
+    """Titre dans la langue de lecture choisie, original sinon.
+
+    Un filtre plutôt qu'un JOIN dans chaque requête : les listes d'annonces
+    sont construites par une dizaine de routes différentes, et l'affichage
+    seul est concerné -- le matching, lui, reste sur le texte original.
+    """
+    lang = session.get("lang") or ""
+    if not lang or lang == "orig":
+        return row["title"]
+    memo = g.setdefault("_tr", {})            # une seule requête par annonce et par page
+    key = (i18n._id_of(row), lang)
+    if key not in memo:
+        memo[key] = i18n.title_for(row, lang)
+    return memo[key]
+
+@app.post("/langue")
+def langue():
+    """Langue de lecture, valable partout. 'orig' = les annonces telles quelles."""
+    lang = request.form.get("lang", "")
+    session["lang"] = lang if (lang in i18n.LANGS or lang == "orig") else ""
+    return redirect(request.form.get("next") or url_for("index"))
 
 @app.template_filter("dt")
 def dt(ts):
@@ -310,7 +335,7 @@ def listing(lid):
                            seller_seen=seen, seller_other=other, back=back,
                            attrs=json.loads(l["attrs"] or "{}"), images=images,
                            title=title, desc=desc, translated=translated,
-                           lang=lang, ready=i18n.have(lid), LANGS=i18n.LANGS)
+                           lang=lang, ready=i18n.have(lid))
 
 @app.route("/reglages", methods=["GET", "POST"])
 def reglages():
