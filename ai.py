@@ -25,9 +25,6 @@ COOLDOWN = 900          # 15 min
 def cooling_down():
     return time.time() < _cooldown_until[0]
 
-def cooldown_remaining():
-    return max(0, int(_cooldown_until[0] - time.time()))
-
 def available():
     """A local endpoint (ollama, llama.cpp, LM Studio) needs no key at all.
 

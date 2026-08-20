@@ -1,4 +1,9 @@
+# Le strict nécessaire. Le reste vient de la bibliothèque standard :
+# sqlite3, urllib, html.parser, hashlib, subprocess.
 flask>=3.0
-requests>=2.31
-curl_cffi>=0.7        # TLS impersonation: needed for ricardo/leboncoin/anibis
-beautifulsoup4>=4.12
+beautifulsoup4>=4.12    # une seule page à parser proprement : reference.py
+
+# Facultatif — seulement pour Facebook Marketplace, qui exige une vraie session
+# connectée. Sans lui, toutes les autres sources fonctionnent.
+#   pip install playwright && playwright install chromium
+# playwright>=1.44

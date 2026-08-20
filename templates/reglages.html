@@ -5,6 +5,43 @@ utiliser <b>ton propre compte</b> — Anthropic, OpenAI, DeepSeek, un modèle lo
 c'est ton fournisseur qui te facture, sans intermédiaire. Rien ici n'exige de
 redémarrer : le changement s'applique à la requête suivante.</p>
 
+<h2>Brancher un service</h2>
+{% if found %}
+<div class="connect">
+  {% for f in found %}
+  <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard here">
+    <input type="hidden" name="which" value="{{ f.id }}">
+    <div class="ctitle">{{ f.label }} <span class="pill ok"><i class="dot"></i>détecté</span></div>
+    <p class="faint">{{ f.note }}</p>
+    <button class="cta">Brancher</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="connect">
+  {% for p, meta in info.items() %}
+  <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard">
+    <input type="hidden" name="which" value="{{ p }}">
+    <div class="ctitle">{{ meta.label }}
+      {% if p == cur.AI_PROVIDER %}<span class="pill ok"><i class="dot"></i>actif</span>{% endif %}</div>
+    <p class="faint">{{ meta.note }}</p>
+    {% if not meta.local %}
+      <input name="key" type="password" autocomplete="off" placeholder="colle ta clé ici">
+      <a class="chip" href="{{ meta.key_url }}" target="_blank" rel="noopener">obtenir une clé ↗</a>
+    {% endif %}
+    <button>Brancher{{ ' et tester' if not meta.local }}</button>
+  </form>
+  {% endfor %}
+</div>
+<p class="faint" style="max-width:70ch">Un <b>abonnement</b> ChatGPT Plus, Claude Pro ou
+  Gemini Advanced ne donne pas accès à l'API : ces comptes-là ne peuvent pas alimenter une
+  app tierce, quel que soit le bouton. Ce qui marche, c'est une <b>clé d'API</b> (compte
+  séparé, facturé à l'usage, souvent avec un palier gratuit), un <b>modèle local</b> qui ne
+  coûte rien, ou — pour l'assistant seulement — l'abonnement <b>Claude Code</b> via le
+  binaire déjà installé.</p>
+
+<h2>Réglage détaillé</h2>
 <div class="strip">
   <span class="label">Actuel</span>
   <span class="chip">{{ cur.AI_PROVIDER }}</span>

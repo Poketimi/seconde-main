@@ -423,8 +423,17 @@ def reglages():
                            spent=ai.spend_since(), left=ai.budget_left(),
                            credit=ai.credit(), tiers=ai.tier_status(),
                            cli_found=ai.cli_available(),
+                           found=settings.detect(), info=config.PROVIDER_INFO,
                            recent=db.q("""SELECT model, purpose, cost_usd, ts FROM ai_spend
                                           ORDER BY ts DESC LIMIT 8"""))
+
+@app.post("/reglages/connecter")
+def reglages_connecter():
+    """Brancher un service en un geste, depuis les cartes en haut de page."""
+    ok, msg = settings.connect(request.form.get("which", ""),
+                               request.form.get("key", "").strip())
+    flash(("✓ " if ok else "✗ ") + msg)
+    return redirect(url_for("reglages"))
 
 @app.post("/reglages/oubli")
 def reglages_oubli():

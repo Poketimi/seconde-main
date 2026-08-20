@@ -41,15 +41,6 @@ def by_place_name(name, country=None):
     r = db.q(sql + " LIMIT 1", tuple(args), one=True)
     return (r["lat"], r["lon"]) if r else None
 
-def nearest_postcode(lat, lon, country="CH"):
-    """Closest postcode centroid to a point -- lets a site filter by radius
-    server-side when all we hold for an origin is coordinates."""
-    r = db.q("""SELECT postcode, lat, lon,
-                       (lat-?)*(lat-?) + (lon-?)*(lon-?) AS d2
-                FROM places WHERE country=? ORDER BY d2 LIMIT 1""",
-             (lat, lat, lon, lon, country), one=True)
-    return r["postcode"] if r else None
-
 def locate_listing(location_raw=None, postal_code=None, country=None):
     """Best-effort coords for a listing, offline. Returns (lat,lon) or None."""
     hit = by_postcode(postal_code, country)

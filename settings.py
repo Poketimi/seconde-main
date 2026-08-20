@@ -86,6 +86,56 @@ def current():
             "CLAUDE_CLI_MODEL": config.CLAUDE_CLI_MODEL,
             "from_db": sorted(stored().keys())}
 
+def _reachable(url, timeout=1.0):
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+def detect():
+    """Ce qui est utilisable sur cette machine, sans rien demander à personne.
+
+    Sert à proposer un branchement en un clic plutôt qu'un formulaire vide :
+    un Ollama déjà lancé ou un `claude` déjà installé n'ont besoin d'aucune clé.
+    """
+    import shutil
+    found = []
+    if shutil.which("claude"):
+        found.append({"id": "claude_cli", "label": "Abonnement Claude Code",
+                      "note": "Le binaire `claude` est installé. Sert l'entretien de "
+                              "l'assistant, sur ton abonnement, sans clé ni budget."})
+    if _reachable("http://localhost:11434/api/tags"):
+        found.append({"id": "ollama", "label": "Ollama (déjà lancé)",
+                      "note": "Un serveur Ollama répond sur cette machine. "
+                              "Gratuit, hors ligne, aucune clé."})
+    return found
+
+def connect(which, key=""):
+    """Branche un service en un geste. Retourne (ok, message)."""
+    if which == "claude_cli":
+        save({"CLAUDE_CLI": "1"})
+        import ai
+        if not ai.cli_available():
+            return False, "Le binaire `claude` est introuvable."
+        txt, why = ai._cli_chat("Réponds en JSON.", 'Renvoie {"ok":true}',
+                                config.CLAUDE_CLI_MODEL, timeout=90)
+        if not txt:
+            return False, (f"Activé, mais `claude` a répondu : {why}. "
+                           f"Lance `claude` dans un terminal pour te reconnecter.")
+        return True, "Abonnement Claude Code branché pour l'entretien de l'assistant."
+    if which not in config.PROVIDERS:
+        return False, "Service inconnu."
+    base, model = config.PROVIDERS[which]
+    info = config.PROVIDER_INFO.get(which, {})
+    if not info.get("local") and not key:
+        return False, f"Il faut coller une clé {info.get('label', which)}."
+    save({"AI_PROVIDER": which, "AI_BASE_URL": base, "AI_MODEL": model,
+          "SMART_MODEL": config.PROVIDER_SMART.get(which, model),
+          **({"AI_API_KEY": key} if key else {})})
+    return probe()
+
 def probe():
     """Un vrai appel minuscule. Retourne (ok, message lisible)."""
     import ai

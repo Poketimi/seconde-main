@@ -303,3 +303,15 @@ select.lang.more{padding:.12rem .4rem;cursor:pointer;-webkit-appearance:none;app
 .navlang select:hover{color:var(--fg);border-color:var(--line2)}
 .loginbox{max-width:340px;margin:8vh auto 0}
 .loginbox h1{margin-bottom:.2rem}
+
+/* ---- one-click provider cards ---- */
+.connect{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));
+  gap:.6rem;margin:.6rem 0 1rem}
+.ccard{border:1px solid var(--line);border-radius:11px;padding:.75rem .8rem;
+  display:flex;flex-direction:column;gap:.4rem;background:var(--bg)}
+.ccard.here{border-color:var(--acc);background:var(--acc-soft)}
+.ccard .ctitle{font-weight:580;font-size:.9rem;display:flex;gap:.4rem;
+  align-items:center;flex-wrap:wrap}
+.ccard p{margin:0;flex:1}
+.ccard input{width:100%}
+.ccard button{width:100%}

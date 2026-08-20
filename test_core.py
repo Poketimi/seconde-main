@@ -1345,6 +1345,41 @@ def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
         _restore_ai(saved)
         config.CLAUDE_CLI = saved.get("CLAUDE_CLI", False)
 
+def test_one_click_connect():
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    real_probe = settings.probe
+    try:
+        db.run("DELETE FROM settings")
+        settings.probe = lambda: (True, "ok")
+
+        ok, msg = settings.connect("groq", "")
+        assert not ok and "clé" in msg, "a keyed provider was accepted with no key"
+
+        ok, _ = settings.connect("groq", "gsk-test")
+        assert ok and config.AI_PROVIDER == "groq"
+        assert config.AI_BASE_URL == config.PROVIDERS["groq"][0]
+        assert config.AI_API_KEY == "gsk-test"
+        assert config.AI_FALLBACKS == [config.PROVIDERS["groq"][1]], \
+            "openrouter spares leaked onto another provider"
+
+        # a local runtime needs no key at all
+        ok, _ = settings.connect("ollama", "")
+        assert ok and config.AI_PROVIDER == "ollama"
+
+        assert settings.connect("nonesuch", "k")[0] is False
+    finally:
+        settings.probe = real_probe
+        db.run("DELETE FROM settings")
+        _restore_ai(saved)
+
+def test_settings_page_lists_every_provider():
+    import app
+    html = app.app.test_client().get("/reglages").get_data(as_text=True)
+    for p, meta in config.PROVIDER_INFO.items():
+        assert meta["label"] in html, f"{p} missing from the connect panel"
+        if not meta.get("local"):
+            assert meta["key_url"] in html, f"no link to get a {p} key"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

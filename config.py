@@ -54,6 +54,25 @@ OPENROUTER_FALLBACKS = [
     "google/gemma-4-26b-a4b-it:free",
 ]
 
+# Ce que la page de réglages affiche pour chaque service : où prendre la clé,
+# et ce que ça coûte. `local` = tourne sur ta machine, aucune clé, aucun compte.
+PROVIDER_INFO = {
+    "ollama":     {"label": "Ollama (local)", "local": True, "key_url": "https://ollama.com/download",
+                   "note": "Gratuit et hors ligne. Plus lent et moins fin, mais aucun compte."},
+    "openrouter": {"label": "OpenRouter", "key_url": "https://openrouter.ai/keys",
+                   "note": "Un compte, tous les modèles. Des modèles :free sans carte."},
+    "gemini":     {"label": "Google AI Studio", "key_url": "https://aistudio.google.com/apikey",
+                   "note": "Palier gratuit large, sans carte bancaire."},
+    "groq":       {"label": "Groq", "key_url": "https://console.groq.com/keys",
+                   "note": "Gratuit et très rapide, modèles ouverts uniquement."},
+    "anthropic":  {"label": "Anthropic", "key_url": "https://console.anthropic.com/settings/keys",
+                   "note": "Ton compte Claude *API* — distinct d'un abonnement Claude."},
+    "openai":     {"label": "OpenAI", "key_url": "https://platform.openai.com/api-keys",
+                   "note": "Ton compte OpenAI *API* — distinct d'un abonnement ChatGPT."},
+    "deepseek":   {"label": "DeepSeek", "key_url": "https://platform.deepseek.com/api_keys",
+                   "note": "Payant, mais parmi les moins chers du marché."},
+}
+
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "openrouter").strip().lower()
 _base, _model = PROVIDERS.get(AI_PROVIDER, PROVIDERS["openrouter"])
 
