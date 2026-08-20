@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 72 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 76 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -41,6 +41,7 @@ Mesuré, pas supposé. `/sources` dans l'app affiche l'état courant.
 | **tutti** | ✅ | même plateforme ; porte aussi **voitures, motos et immobilier** |
 | **ricardo** | ⚠️ sitemap | 50 000 URLs publiées pour les crawlers, mais **sans prix** |
 | **facebook marketplace** | ✅ | via un vrai navigateur connecté à ton compte |
+| **ebay** | 🔑 API | officielle et gratuite, 5000 requêtes/jour — demande des clés |
 | leboncoin | ⛔ | `robots.txt` l'interdit — voir ci-dessous |
 | autoscout24 / motoscout24 / immoscout24 | ⛔ | idem |
 
@@ -55,6 +56,22 @@ les Scout24** et publie les mêmes catégories. `moto yamaha` y sort des BMW F80
 `appartement lausanne` des 3-pièces à Morges et Yverdon.
 
 ---
+
+### eBay : une API, pas du crawl
+
+eBay répond 403 à ce robot sur ses pages web, et publie une API pour ça. C'est la bonne
+réponse à un refus : prendre la porte ouverte, pas chercher la fenêtre. `ebay.py` n'importe
+même pas `crawler.py` — il n'y a pas de `robots.txt` à respecter sur un point d'accès conçu
+pour être appelé, et un test vérifie que ça reste vrai.
+
+Compte développeur gratuit sur [developer.ebay.com/my/keys](https://developer.ebay.com/my/keys)
+(clés **Production**, pas Sandbox), puis colle `AppID:CertID` dans /reglages. Le quota est de
+**5000 requêtes/jour** ; l'app en consomme quelques dizaines.
+
+Seules les annonces d'**occasion** sont demandées, et le filtre « livrable en Suisse » est
+appliqué d'office — ce qui rend `EBAY_DE` et `EBAY_FR` utiles autant que `EBAY_CH` : bien
+plus de volume, et seul ce qui t'arrive réellement remonte. Sans clés, l'adaptateur rend une
+liste vide et /sources dit « identifiants eBay absents » au lieu d'échouer en silence.
 
 ## Le crawler
 
@@ -270,6 +287,7 @@ automatique ne reçoive pas une page de connexion.
 | `sources.py` | un adaptateur par site |
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `ai.py` | modèles, lots, bascule entre comptes, budget |
+| `ebay.py` | API officielle eBay (OAuth + Browse) |
 | `i18n.py` | traductions |
 | `settings.py` | fournisseur / clé / modèles, réglables à chaud |
 | `auth.py` | le compte et le mot de passe |
@@ -278,7 +296,7 @@ automatique ne reçoive pas une page de connexion.
 | `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
 | `reference.py` | prix neuf de référence |
 | `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
-| `test_core.py` | 72 suites, sans réseau |
+| `test_core.py` | 76 suites, sans réseau |
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.

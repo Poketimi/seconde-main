@@ -419,6 +419,7 @@ def reglages():
             flash("Réglages enregistrés.")
         return redirect(url_for("reglages"))
     return render_template("reglages.html", cur=settings.current(),
+                           ebay_ok=__import__("ebay").configured(),
                            providers=config.PROVIDERS, smart=config.PROVIDER_SMART,
                            spent=ai.spend_since(), left=ai.budget_left(),
                            credit=ai.credit(), tiers=ai.tier_status(),

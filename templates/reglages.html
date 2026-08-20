@@ -20,6 +20,16 @@ redémarrer : le changement s'applique à la requête suivante.</p>
 {% endif %}
 
 <div class="connect">
+  <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard {{ 'here' if ebay_ok }}">
+    <input type="hidden" name="which" value="ebay">
+    <div class="ctitle">eBay
+      {% if ebay_ok %}<span class="pill ok"><i class="dot"></i>branché</span>{% endif %}</div>
+    <p class="faint">API officielle, gratuite, 5000 requêtes/jour. Colle
+      <code>AppID:CertID</code> d'un bloc.</p>
+    <input name="key" type="password" autocomplete="off" placeholder="AppID:CertID">
+    <a class="chip" href="https://developer.ebay.com/my/keys" target="_blank" rel="noopener">obtenir des clés ↗</a>
+    <button>Brancher et tester</button>
+  </form>
   {% for p, meta in info.items() %}
   <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard">
     <input type="hidden" name="which" value="{{ p }}">
@@ -94,6 +104,28 @@ redémarrer : le changement s'applique à la requête suivante.</p>
     <p class="faint">Au-delà, l'entretien retombe sur le modèle bon marché au lieu de
       s'arrêter. Un modèle absent de la table de prix est estimé au tarif le plus cher,
       pour qu'il compte quand même contre le plafond.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>eBay <span class="faint">— API officielle, pas du crawl</span></legend>
+    <p class="faint">eBay refuse ce robot sur ses pages web, et publie une API pour ça :
+      compte développeur gratuit, <b>5000 requêtes/jour</b>, soit très largement au-dessus
+      de ce que l'app consomme. Crée des clés <b>Production</b> (pas Sandbox) sur
+      <a href="https://developer.ebay.com/my/keys" target="_blank" rel="noopener">developer.ebay.com/my/keys</a>.</p>
+    <label>App ID <span class="faint">— « Client ID »</span>
+      <input name="EBAY_CLIENT_ID" value="{{ cur.EBAY_CLIENT_ID }}" autocomplete="off"></label>
+    <label>Cert ID <span class="faint">— « Client Secret »</span>
+      <input name="EBAY_CLIENT_SECRET" type="password" autocomplete="off"
+             placeholder="{{ cur.EBAY_CLIENT_SECRET or 'PRD-…' }} — vide = on garde l'actuel"></label>
+    <label>Marché
+      <select name="EBAY_MARKETPLACE">
+        {% for m in ('EBAY_CH','EBAY_DE','EBAY_FR','EBAY_IT','EBAY_GB','EBAY_US') %}
+          <option value="{{ m }}" {{ 'selected' if m == cur.EBAY_MARKETPLACE }}>{{ m }}</option>
+        {% endfor %}
+      </select></label>
+    <p class="faint">Le filtre « livrable en Suisse » est appliqué d'office, ce qui rend
+      EBAY_DE et EBAY_FR utiles aussi : bien plus de volume, et seul ce qui t'arrive
+      réellement remonte. Seules les annonces d'<b>occasion</b> sont demandées.</p>
   </fieldset>
 
   <fieldset>

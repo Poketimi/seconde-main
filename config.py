@@ -106,6 +106,17 @@ ALT_API_KEY  = os.environ.get("ALT_API_KEY", "").strip()
 ALT_BASE_URL = os.environ.get("ALT_BASE_URL", _abase).rstrip("/")
 ALT_MODEL    = os.environ.get("ALT_MODEL", _amodel)
 
+# --- eBay -------------------------------------------------------------
+# Pas du crawl : une API officielle, gratuite, 5000 requêtes/jour. Les
+# identifiants se créent sur https://developer.ebay.com/my/keys (compte
+# développeur gratuit) puis se collent dans /reglages.
+# EBAY_CH est le marché suisse ; DELIVERY_CH ne garde que ce qui est livrable
+# en Suisse, ce qui rend EBAY_DE et EBAY_FR utiles aussi.
+EBAY_CLIENT_ID     = os.environ.get("EBAY_CLIENT_ID", "").strip()
+EBAY_CLIENT_SECRET = os.environ.get("EBAY_CLIENT_SECRET", "").strip()
+EBAY_MARKETPLACE   = os.environ.get("EBAY_MARKETPLACE", "EBAY_CH").strip()
+EBAY_DELIVERY_CH   = os.environ.get("EBAY_DELIVERY_CH", "1") != "0"
+
 # --- abonnement Claude Code -------------------------------------------
 # Lance le binaire `claude -p` déjà installé sur la machine : les appels
 # passent par ton abonnement, pas par une clé d'API, et ne coûtent rien au

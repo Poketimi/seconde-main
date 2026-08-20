@@ -73,6 +73,24 @@ def get(url, params=None, headers=None, timeout=None, throttle=True, **_ignored)
     except Exception:
         return None
 
+def post_form(url, fields, headers=None, timeout=None):
+    """POST urlencodé — ce qu'OAuth2 client_credentials attend, pas du JSON."""
+    h = {"User-Agent": _ua(),
+         "Content-Type": "application/x-www-form-urlencoded"}
+    h.update(headers or {})
+    req = urllib.request.Request(url, data=urlencode(fields).encode(),
+                                 headers=h, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout or 30) as r:
+            return _Resp(r.status, r.read().decode("utf-8", "replace"), dict(r.headers))
+    except urllib.error.HTTPError as e:
+        try:
+            return _Resp(e.code, e.read().decode("utf-8", "replace"))
+        except Exception:
+            return _Resp(e.code, "")
+    except Exception:
+        return None
+
 def post_json(url, payload, headers=None, timeout=None):
     h = {"User-Agent": _ua(), "Content-Type": "application/json"}
     h.update(headers or {})
