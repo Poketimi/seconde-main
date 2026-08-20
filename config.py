@@ -74,6 +74,18 @@ def fallback_chain(model=None, provider=None):
     return list(dict.fromkeys([model, *extra]))
 
 AI_FALLBACKS = fallback_chain()
+
+# --- compte de repli ---------------------------------------------------
+# Deux comptes, essayés dans l'ordre. Le principal (AI_* ci-dessus) peut être
+# ton compte Anthropic ou OpenAI ; quand il n'a plus de jetons, l'app bascule
+# toute seule sur celui-ci et continue au lieu de s'arrêter.
+# Aucun fournisseur sauf OpenRouter ne publie son solde : la bascule se fait
+# donc sur l'échec réel d'un appel (401/402/429), pas sur une estimation.
+ALT_PROVIDER = os.environ.get("ALT_PROVIDER", "").strip().lower()
+_abase, _amodel = PROVIDERS.get(ALT_PROVIDER, ("", ""))
+ALT_API_KEY  = os.environ.get("ALT_API_KEY", "").strip()
+ALT_BASE_URL = os.environ.get("ALT_BASE_URL", _abase).rstrip("/")
+ALT_MODEL    = os.environ.get("ALT_MODEL", _amodel)
 GEOCODER_EMAIL = os.environ.get("GEOCODER_EMAIL", "anonymous@example.com")
 
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", 1800))  # 30 min

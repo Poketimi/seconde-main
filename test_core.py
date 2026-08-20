@@ -29,11 +29,11 @@ if _REAL_DB.exists():
             CREATE INDEX IF NOT EXISTS idx_places_name ON places(country, name);""")
         c.executemany("INSERT INTO places VALUES(?,?,?,?,?,?)", rows)
 
-import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings
+import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings, auth
 crawler.init()          # crawl_cache / crawl_log / domain_state on the scratch db
 
 def test_modules():
-    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo()
+    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo(); auth.demo()
 
 def test_end_to_end():
     """Whole pipeline on a fake source: no network, fully deterministic."""
@@ -1184,6 +1184,36 @@ def test_own_provider_and_models():
         db.run("DELETE FROM settings")
         _restore_ai(saved)
 
+def test_smart_model_steps_down_when_the_account_is_empty():
+    """The ledger only sees its own calls; an empty account must still demote."""
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    real_chat, real_credit = ai.chat, ai.credit
+    seen = {}
+    def spy(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=None):
+        seen["chain"] = list(models or [])
+        return None
+    try:
+        ai.chat = spy
+        db.run("DELETE FROM ai_spend")          # well under the yearly cap
+
+        ai.credit = lambda max_age=300: 4.20    # money left: use the good model
+        ai.smart_chat("s", "u", "test")
+        assert seen["chain"][0] == config.SMART_MODEL, seen["chain"]
+
+        ai.credit = lambda max_age=300: 0.0     # account dry: step down
+        ai.smart_chat("s", "u", "test")
+        assert config.SMART_MODEL not in seen["chain"], \
+            f"empty account still billed the expensive model: {seen['chain']}"
+        assert seen["chain"][0] == config.AI_MODEL
+
+        ai.credit = lambda max_age=300: None    # provider says nothing: carry on
+        ai.smart_chat("s", "u", "test")
+        assert seen["chain"][0] == config.SMART_MODEL, \
+            "an unknown balance must not be read as an empty one"
+    finally:
+        ai.chat, ai.credit = real_chat, real_credit
+        _restore_ai(saved)
+
 def test_settings_page_never_echoes_the_key():
     import app
     saved = {k: getattr(config, k) for k in settings.FIELDS}
@@ -1194,6 +1224,80 @@ def test_settings_page_never_echoes_the_key():
         assert "sk-or-v1" in html, "no hint of which key is in use"
         assert "anthropic" in html and "openai" in html, "own-account providers missing"
     finally:
+        _restore_ai(saved)
+
+
+# --- login -----------------------------------------------------------------
+
+def test_login_locks_the_app_only_once_an_account_exists():
+    import app
+    db.run("DELETE FROM users")
+    c = app.app.test_client()
+    assert c.get("/catalogue").status_code == 200, "no account should mean no lock"
+
+    ok, _ = auth.create("timi", "hunter2")
+    assert ok
+    c = app.app.test_client()
+    r = c.get("/catalogue")
+    assert r.status_code == 302 and "/login" in r.headers["Location"], \
+        f"app still open after an account was created: {r.status_code}"
+    # a poller must get a status code, not a login page it cannot parse
+    assert c.get("/api/status").status_code == 401
+
+    assert c.post("/login", data={"username": "timi", "password": "wrong"}).status_code == 302
+    assert c.get("/catalogue").status_code == 302, "wrong password let us in"
+
+    c.post("/login", data={"username": "timi", "password": "hunter2"})
+    assert c.get("/catalogue").status_code == 200, "correct password rejected"
+
+    c.post("/logout")
+    assert c.get("/catalogue").status_code == 302, "logout did not take effect"
+    db.run("DELETE FROM users")
+
+def test_password_is_never_stored_in_the_clear():
+    db.run("DELETE FROM users")
+    auth.create("timi", "correct horse battery staple")
+    row = db.q("SELECT pw, salt FROM users WHERE username='timi'", one=True)
+    assert "correct horse" not in row["pw"], "password readable in the database"
+    assert len(row["salt"]) == 32, "no per-account salt"
+    # two accounts, same password, different hashes
+    auth.create("autre", "correct horse battery staple")
+    other = db.q("SELECT pw FROM users WHERE username='autre'", one=True)
+    assert other["pw"] != row["pw"], "same password hashed identically"
+    db.run("DELETE FROM users")
+
+def test_second_account_takes_over_when_the_first_is_dry():
+    """A provider out of tokens must hand off, not stop the app."""
+    saved = {k: getattr(config, k) for k in settings.FIELDS}
+    real_post = ai.net.post_json
+    ai._tier_down.clear()
+    calls = []
+    class R:
+        def __init__(self, code, txt=""):
+            self.status_code, self.text = code, txt
+        def json(self):
+            return {"choices": [{"message": {"content": '{"ok":true}'}}], "usage": {}}
+    def fake(url, body, headers=None, timeout=None):
+        calls.append(url)
+        return R(402) if "primaire" in url else R(200)
+    try:
+        config.AI_PROVIDER, config.AI_BASE_URL = "openai", "https://primaire/v1"
+        config.AI_API_KEY, config.AI_MODEL = "k1", "m1"
+        config.AI_FALLBACKS = ["m1"]
+        config.ALT_PROVIDER, config.ALT_BASE_URL = "openrouter", "https://repli/v1"
+        config.ALT_API_KEY, config.ALT_MODEL = "k2", "m2"
+        ai.net.post_json = fake
+        db.run("DELETE FROM ai_cache")
+
+        assert ai.chat("s", "u") == '{"ok":true}', "fallback account never reached"
+        assert any("primaire" in u for u in calls) and any("repli" in u for u in calls)
+        assert ai._tier_down.get("principal", 0) > time.time(), \
+            "dry account not parked; it will be retried on every single call"
+        assert [t["name"] for t in ai.tiers()] == ["repli"]
+    finally:
+        ai.net.post_json = real_post
+        ai._tier_down.clear()
+        db.run("DELETE FROM ai_cache")
         _restore_ai(saved)
 
 if __name__ == "__main__":

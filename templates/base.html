@@ -13,7 +13,7 @@
   <a class="tab {{ 'on' if request.endpoint in ('assist','assist_answers') }}" href="{{ url_for('assist') }}">Assistant</a>
   <a class="tab {{ 'on' if request.endpoint == 'profil' }}" href="{{ url_for('profil') }}">Profil</a>
   <a class="tab {{ 'on' if request.endpoint == 'crawler_page' }}" href="{{ url_for('crawler_page') }}">Crawler</a>
-  <a class="tab {{ 'on' if request.endpoint == 'reglages' }}" href="{{ url_for('reglages') }}">Réglages</a>
+  <a class="tab {{ 'on' if request.endpoint in ('reglages','compte') }}" href="{{ url_for('reglages') }}">Réglages</a>
   <span class="spacer"></span>
   <form method="post" action="{{ url_for('langue') }}" class="navlang">
     <input type="hidden" name="next" value="{{ request.full_path }}">
@@ -27,6 +27,10 @@
     <noscript><button>ok</button></noscript>
   </form>
   <a class="btn cta" href="{{ url_for('search_form') }}">+ Recherche</a>
+  {% if session.get('user') %}
+    <form method="post" action="{{ url_for('logout') }}" class="navlang">
+      <button title="Se déconnecter ({{ session['user'] }})">sortir</button></form>
+  {% endif %}
 </nav>
 <main>
 {% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}

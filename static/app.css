@@ -301,3 +301,5 @@ select.lang.more{padding:.12rem .4rem;cursor:pointer;-webkit-appearance:none;app
 .navlang select{font-size:.78rem;padding:.2rem .4rem;color:var(--dim);
   background:var(--bg);border:1px solid var(--line);border-radius:8px;cursor:pointer}
 .navlang select:hover{color:var(--fg);border-color:var(--line2)}
+.loginbox{max-width:340px;margin:8vh auto 0}
+.loginbox h1{margin-bottom:.2rem}

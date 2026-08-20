@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Compte{% endblock %}{% block body %}
+<h1>Compte</h1>
+{% if locked %}
+  <p class="sub">Connecté en tant que <b>{{ user }}</b>. L'accès à l'app demande ce mot de
+    passe. Il n'est pas stocké : seule son empreinte l'est.</p>
+  <form class="form" method="post">
+    <fieldset>
+      <legend>Changer le mot de passe</legend>
+      <label>Nouveau mot de passe
+        <input name="password" type="password" autocomplete="new-password" required></label>
+      <label>Confirmer
+        <input name="password2" type="password" autocomplete="new-password" required></label>
+      <button class="cta" type="submit">Changer</button>
+    </fieldset>
+  </form>
+  <h2>Retirer le mot de passe</h2>
+  <form method="post" onsubmit="return confirm('Supprimer le compte ? L\'app redeviendra accessible sans mot de passe.')">
+    <input type="hidden" name="action" value="supprimer">
+    <button class="danger">Supprimer le compte</button>
+    <span class="faint">L'app redevient ouverte, comme avant.</span>
+  </form>
+{% else %}
+  <p class="sub">L'app est <b>ouverte</b> : n'importe qui ayant accès à cette machine et au
+    port peut la consulter. Créer un compte allume le verrou — c'est la seule chose qui
+    l'active.</p>
+  <form class="form" method="post">
+    <fieldset>
+      <legend>Créer le compte</legend>
+      <label>Nom d'utilisateur
+        <input name="username" autocomplete="username" required></label>
+      <label>Mot de passe <span class="faint">— 4 caractères minimum</span>
+        <input name="password" type="password" autocomplete="new-password" required></label>
+      <label>Confirmer
+        <input name="password2" type="password" autocomplete="new-password" required></label>
+      <button class="cta" type="submit">Créer et verrouiller</button>
+    </fieldset>
+  </form>
+  <p class="faint">Un seul compte suffit : c'est une app personnelle, pas un service. Il n'y
+    a pas de récupération de mot de passe, mais tu peux toujours vider la table
+    <code>users</code> de <code>data/market.db</code> pour rouvrir l'accès.</p>
+{% endif %}
+{% endblock %}

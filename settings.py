@@ -13,8 +13,10 @@ import db, config
 
 # Ce que la page de réglages possède. Le reste reste dans config.py.
 FIELDS = ("AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY",
-          "SMART_MODEL", "SMART_BUDGET_USD")
-SECRET = ("AI_API_KEY",)
+          "SMART_MODEL", "SMART_BUDGET_USD",
+          # compte de repli, utilisé quand le principal n'a plus de jetons
+          "ALT_PROVIDER", "ALT_BASE_URL", "ALT_MODEL", "ALT_API_KEY")
+SECRET = ("AI_API_KEY", "ALT_API_KEY")
 
 def stored():
     return {r["k"]: r["v"] for r in db.q("SELECT k,v FROM settings")}
@@ -26,7 +28,7 @@ def _coerce(k, v):
         except ValueError:
             return None
     v = str(v).strip()
-    return v.rstrip("/") if k == "AI_BASE_URL" else v
+    return v.rstrip("/") if k.endswith("BASE_URL") else v
 
 def apply(values):
     """Écrit ces réglages sur `config`. Une valeur vide ne remplace rien."""
@@ -72,6 +74,10 @@ def current():
             "SMART_MODEL": config.SMART_MODEL,
             "SMART_BUDGET_USD": config.SMART_BUDGET_USD,
             "AI_API_KEY": masked(config.AI_API_KEY),
+            "ALT_PROVIDER": config.ALT_PROVIDER,
+            "ALT_BASE_URL": config.ALT_BASE_URL,
+            "ALT_MODEL": config.ALT_MODEL,
+            "ALT_API_KEY": masked(config.ALT_API_KEY),
             "from_db": sorted(stored().keys())}
 
 def probe():
@@ -97,6 +103,7 @@ def demo():
     assert "abcdefghijklmnop" not in masked("sk-or-v1-abcdefghijklmnop")
     assert masked("") == "" and masked("short") == "définie"
     assert _coerce("AI_BASE_URL", " https://x/v1/ ") == "https://x/v1"
+    assert _coerce("ALT_BASE_URL", "https://y/v1/") == "https://y/v1"
     assert _coerce("SMART_BUDGET_USD", "12,5") == 12.5
     assert _coerce("SMART_BUDGET_USD", "abc") is None
     before = config.AI_MODEL

@@ -59,18 +59,73 @@ redémarrer : le changement s'applique à la requête suivante.</p>
       pour qu'il compte quand même contre le plafond.</p>
   </fieldset>
 
+  <fieldset>
+    <legend>Compte de repli <span class="faint">— facultatif</span></legend>
+    <p class="faint">Quand le compte principal n'a plus de jetons, l'app bascule ici toute
+      seule et continue, au lieu de retomber sur le tri par mots-clés. Le compte épuisé est
+      mis de côté un quart d'heure puis retenté. Seul OpenRouter publie son solde : pour les
+      autres, la bascule se déclenche au premier appel refusé (401 / 402 / 429).</p>
+    <label>Service
+      <select name="ALT_PROVIDER">
+        <option value="" {{ 'selected' if not cur.ALT_PROVIDER }}>aucun</option>
+        {% for p in providers %}
+        <option value="{{ p }}" {{ 'selected' if p == cur.ALT_PROVIDER }}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Adresse de l'API
+      <input name="ALT_BASE_URL" value="{{ cur.ALT_BASE_URL }}" placeholder="https://…/v1">
+    </label>
+    <label>Modèle
+      <input name="ALT_MODEL" value="{{ cur.ALT_MODEL }}" autocomplete="off">
+    </label>
+    <label>Clé
+      <input name="ALT_API_KEY" type="password" autocomplete="off"
+             placeholder="{{ cur.ALT_API_KEY or 'sk-…' }} — laisser vide pour garder l'actuelle">
+    </label>
+  </fieldset>
+
   <div class="row">
     <button class="cta" type="submit">Enregistrer</button>
     <button type="submit" name="probe" value="1">Enregistrer et tester</button>
   </div>
 </form>
 
-<h2>Dépense du modèle d'entretien</h2>
+<h2>Accès à l'app</h2>
 <div class="strip">
-  <span class="label">Sur 365 jours</span>
-  <span class="pill {{ 'blocked' if left <= 0 else 'ok' }}"><i class="dot"></i>
-    {{ '%.3f'|format(spent) }} $ dépensés · {{ '%.2f'|format(left) }} $ restants</span>
+  <span class="pill {{ 'ok' if session.get('user') else 'empty' }}"><i class="dot"></i>
+    {{ 'connecté : ' + session['user'] if session.get('user') else 'ouverte, sans mot de passe' }}</span>
+  <a class="chip" href="{{ url_for('compte') }}">gérer le compte →</a>
 </div>
+
+<h2>Comptes IA</h2>
+<div class="strip">
+  {% for t in tiers %}
+    <span class="pill {{ 'ok' if t.live else 'blocked' }}"><i class="dot"></i>
+      {{ t.name }} · {{ t.provider }} · {{ t.model }}
+      {%- if not t.live %} — en pause {{ (t.retry_in / 60)|round|int }} min{% endif %}</span>
+  {% endfor %}
+</div>
+
+<h2>Dépense</h2>
+<div class="strip">
+  <span class="label">Compte {{ cur.AI_PROVIDER }}</span>
+  {% if credit is none %}
+    <span class="pill unknown"><i class="dot"></i>solde non communiqué par ce service</span>
+  {% else %}
+    <span class="pill {{ 'blocked' if credit <= 0.05 else 'ok' }}"><i class="dot"></i>
+      {{ '%.2f'|format(credit) }} $ de crédit restant</span>
+  {% endif %}
+</div>
+<div class="strip">
+  <span class="label">Modèle d'entretien, 365 j</span>
+  <span class="pill {{ 'blocked' if left <= 0 else 'ok' }}"><i class="dot"></i>
+    {{ '%.3f'|format(spent) }} $ dépensés · {{ '%.2f'|format(left) }} $ sous plafond</span>
+</div>
+<p class="faint">Le registre ci-dessous ne compte que le modèle d'entretien. Le crédit du
+  compte, lui, inclut aussi le modèle bon marché — c'est lui qui décide vraiment s'il
+  « reste des jetons ». À zéro, l'entretien retombe automatiquement sur le modèle bon
+  marché au lieu de s'arrêter.</p>
 {% if recent %}
 <div class="tablewrap"><table>
   <tr><th class="nowrap">Quand</th><th>Modèle</th><th>Usage</th><th class="num">Coût</th></tr>

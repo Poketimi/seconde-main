@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Connexion{% endblock %}{% block body %}
+<div class="loginbox">
+  <h1>Seconde Main</h1>
+  <p class="sub">Cette instance est protégée par un mot de passe.</p>
+  <form class="form" method="post" action="{{ url_for('login') }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Nom d'utilisateur
+      <input name="username" autocomplete="username" autofocus required></label>
+    <label>Mot de passe
+      <input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="cta" type="submit">Entrer</button>
+  </form>
+  <p class="faint">Mot de passe oublié ? Il n'y a pas de récupération : l'app est locale.
+    Efface la ligne dans <code>data/market.db</code> (table <code>users</code>) et l'accès
+    redevient libre.</p>
+</div>
+{% endblock %}

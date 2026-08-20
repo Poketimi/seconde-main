@@ -133,6 +133,20 @@ page ne la réaffiche jamais (seulement `sk-or-v1…4f21`). Elle est stockée en
 `data/market.db`, sur ta machine, exactement comme `.env` l'était — « Oublier la clé »
 la retire et rend la main à `.env`.
 
+### Deux comptes, bascule automatique
+
+Le bloc « compte de repli » de `/reglages` prend un **second** service avec sa propre clé et
+son propre modèle. Quand le principal n'a plus de jetons — 401, 402 ou 429 — l'app bascule
+dessus toute seule et continue, au lieu de retomber sur le tri par mots-clés ; le compte
+épuisé est mis de côté un quart d'heure puis retenté. C'est ce qui permet de mettre ton
+compte Anthropic en principal et de garder OpenRouter derrière : tant qu'il reste des
+jetons chez le premier, c'est lui qui sert.
+
+Seul OpenRouter publie son solde (`/credits`, affiché sur la page). Chez les autres la
+bascule se déclenche donc au **premier appel refusé**, pas sur une estimation — et le
+registre `ai_spend`, qui ne compte que le modèle d'entretien, ne suffisait pas : il
+annonçait 0.36 $ dépensés quand le compte en avait réellement consommé 0.82 $.
+
 Un modèle absent de `SMART_PRICES` est estimé au tarif le plus cher : un identifiant
 inconnu compte quand même contre le plafond annuel au lieu de passer pour gratuit.
 
@@ -238,6 +252,19 @@ C'est ce qui remplit `products` et donc les médianes de prix.
 `browser.py` tier navigateur · `ai.py` modèle bon marché + entretien · `i18n.py` traductions ·
 `settings.py` fournisseur/clé/modèles réglables à chaud · `geo.py` trajets · `db.py` schéma ·
 `net.py` sortie HTTP pour les API (OpenRouter, OSRM, GeoNames), sans usurpation d'empreinte.
+
+## Mot de passe
+
+L'app est **ouverte par défaut** : elle écoute sur `127.0.0.1`, sur ta machine. Créer un
+compte dans `/compte` est ce qui allume le verrou — tant que la table `users` est vide, rien
+ne change. Un seul compte, pas d'e-mail, pas de récupération : vider `users` rouvre l'accès.
+
+Le mot de passe n'est pas stocké, seulement son empreinte PBKDF2-SHA256 (200 000 tours,
+sel par compte) — deux comptes avec le même mot de passe n'ont pas la même empreinte. La
+clé de signature des cookies est tirée au hasard et gardée en base ; elle était écrite en
+dur dans le code, ce qui, avec un login, aurait laissé fabriquer un cookie de session.
+Les routes `/api/*` répondent **401** au lieu de rediriger, pour que le rafraîchissement
+automatique ne reçoive pas une page de connexion qu'il ne sait pas lire.
 
 ## Limites assumées
 

@@ -168,6 +168,15 @@ CREATE TABLE IF NOT EXISTS listing_i18n (
 -- AI provider, key, models. Read at startup, applied onto `config`.
 CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT, updated_at REAL);
 
+-- Un seul utilisateur en pratique. Tant que la table est vide l'app reste
+-- ouverte : créer un compte est ce qui active le verrou.
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  pw TEXT NOT NULL, salt TEXT NOT NULL,     -- PBKDF2-SHA256, sel par compte
+  created_at REAL
+);
+
 -- caches ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_cache  (k TEXT PRIMARY KEY, v TEXT, created_at REAL);
 CREATE TABLE IF NOT EXISTS geo_cache (k TEXT PRIMARY KEY, lat REAL, lon REAL, created_at REAL);

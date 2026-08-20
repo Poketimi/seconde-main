@@ -2,11 +2,70 @@
 import json, time, threading
 from flask import (Flask, render_template, request, redirect, url_for, jsonify,
                    flash, abort, session, g)
-import db, geo, ai, sources, engine, config, browser, profile, sellers, reference, crawler, i18n, settings
+import db, geo, ai, sources, engine, config, browser, profile, sellers, reference, crawler, i18n, settings, auth
 
 app = Flask(__name__)
-app.secret_key = "local-only"
+db.init()
+app.secret_key = auth.secret_key()   # tirée une fois, gardée en base
 settings.load()          # la base a le dernier mot sur .env
+
+# Pages accessibles sans être connecté. Tout le reste passe par le verrou --
+# une liste blanche plutôt qu'un décorateur à poser sur quarante routes, qu'on
+# oublie sur la quarante-et-unième.
+OPEN = {"login", "static"}
+
+@app.before_request
+def require_login():
+    if not auth.enabled():          # aucun compte créé : app ouverte, comme avant
+        return None
+    if request.endpoint in OPEN or session.get("user"):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "login"}), 401
+    return redirect(url_for("login", next=request.full_path))
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not auth.enabled():
+        return redirect(url_for("compte"))
+    if request.method == "POST":
+        u, pw = request.form.get("username", ""), request.form.get("password", "")
+        if auth.check(u, pw):
+            session["user"] = u.strip()
+            nxt = request.form.get("next") or ""
+            return redirect(nxt if nxt.startswith("/") else url_for("index"))
+        flash("Nom d'utilisateur ou mot de passe incorrect.")
+        return redirect(url_for("login", next=request.form.get("next", "")))
+    return render_template("login.html", next=request.args.get("next", ""))
+
+@app.post("/logout")
+def logout():
+    session.pop("user", None)
+    return redirect(url_for("login") if auth.enabled() else url_for("index"))
+
+@app.route("/compte", methods=["GET", "POST"])
+def compte():
+    """Créer le compte (ce qui allume le verrou), ou changer le mot de passe."""
+    if request.method == "POST":
+        u = request.form.get("username", "")
+        pw, pw2 = request.form.get("password", ""), request.form.get("password2", "")
+        if pw != pw2:
+            flash("Les deux mots de passe ne correspondent pas.")
+        elif request.form.get("action") == "supprimer":
+            auth.delete(session.get("user") or u)
+            session.pop("user", None)
+            flash("Compte supprimé — l'app est de nouveau ouverte sans mot de passe.")
+        elif auth.enabled() and session.get("user"):
+            ok, msg = auth.set_password(session["user"], pw)
+            flash(msg)
+        else:
+            ok, msg = auth.create(u, pw)
+            flash(msg)
+            if ok:
+                session["user"] = u.strip()
+        return redirect(url_for("compte"))
+    return render_template("compte.html", user=session.get("user"),
+                           locked=auth.enabled())
 
 @app.template_filter("ago")
 def ago(ts):
@@ -360,6 +419,7 @@ def reglages():
     return render_template("reglages.html", cur=settings.current(),
                            providers=config.PROVIDERS, smart=config.PROVIDER_SMART,
                            spent=ai.spend_since(), left=ai.budget_left(),
+                           credit=ai.credit(), tiers=ai.tier_status(),
                            recent=db.q("""SELECT model, purpose, cost_usd, ts FROM ai_spend
                                           ORDER BY ts DESC LIMIT 8"""))
 

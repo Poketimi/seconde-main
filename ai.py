@@ -29,10 +29,14 @@ def cooldown_remaining():
     return max(0, int(_cooldown_until[0] - time.time()))
 
 def available():
-    """A local endpoint (ollama, llama.cpp, LM Studio) needs no key at all."""
+    """A local endpoint (ollama, llama.cpp, LM Studio) needs no key at all.
+
+    True as long as ONE of the two accounts can still be tried: the primary
+    running dry must not read as "no AI".
+    """
     if cooling_down():
         return False
-    return bool(config.AI_API_KEY) or _is_local(config.AI_BASE_URL)
+    return bool(tiers())
 
 def _is_local(url):
     return any(h in (url or "") for h in ("localhost", "127.0.0.1", "0.0.0.0", "::1"))
@@ -42,12 +46,47 @@ def _slug(*parts):
     s = re.sub(r"[^\w\s-]", "", s.lower())
     return re.sub(r"[\s_-]+", "-", s).strip("-")[:120]
 
+# Un compte à court de jetons répond 401/402/429. Le noter évite de reperdre un
+# aller-retour à chaque appel : on file directement sur le compte de repli.
+_tier_down = {}
+TIER_COOLDOWN = 900         # 15 min
+DRY = (401, 402, 403, 429)  # clé refusée, plus de crédit, quota épuisé
+
+def tiers():
+    """Les comptes utilisables, principal d'abord, celui en panne exclu."""
+    out = []
+    for name, prov, base, key, model in (
+            ("principal", config.AI_PROVIDER, config.AI_BASE_URL,
+             config.AI_API_KEY, config.AI_MODEL),
+            ("repli", config.ALT_PROVIDER, config.ALT_BASE_URL,
+             config.ALT_API_KEY, config.ALT_MODEL)):
+        if not base or not (key or _is_local(base)):
+            continue
+        if time.time() < _tier_down.get(name, 0):
+            continue
+        out.append({"name": name, "provider": prov, "base": base,
+                    "key": key, "model": model})
+    return out
+
+def tier_status():
+    """Pour l'interface : quel compte sert, et lequel est en pause."""
+    live = {t["name"] for t in tiers()}
+    return [{"name": n, "provider": p, "model": m, "live": n in live,
+             "retry_in": max(0, int(_tier_down.get(n, 0) - time.time()))}
+            for n, p, m in (("principal", config.AI_PROVIDER, config.AI_MODEL),
+                            ("repli", config.ALT_PROVIDER, config.ALT_MODEL))
+            if p]
+
 def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=None):
     """Cached chat completion. Returns text, or None if unavailable/failed.
 
     `models` overrides the fallback chain (used by smart_chat for the
     interview model). It is part of the cache key, so the cheap and expensive
     models never read each other's answers.
+
+    Two accounts are tried in order. When the first has no tokens left it is
+    parked for a quarter of an hour and the second takes over, so a dry
+    account degrades the app instead of stopping it.
     """
     chain = list(models) if models else list(config.AI_FALLBACKS)
     key = hashlib.sha256(
@@ -57,32 +96,45 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
         return row["v"]
     if not available():
         return None
-    headers = {"Content-Type": "application/json",
-               **({"Authorization": f"Bearer {config.AI_API_KEY}"} if config.AI_API_KEY else {})}
-    url = f"{config.AI_BASE_URL}/chat/completions"
     seen, r, used = [], None, None
-    for model in dict.fromkeys(chain):                    # dedupe, keep order
-        body = {"model": model,
-                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": user}],
-                "temperature": temperature, "max_tokens": max_tokens,
-                "response_format": {"type": "json_object"}}
-        # asking for the real cost is an OpenRouter extension; other providers
-        # reject unknown top-level fields outright
-        if config.AI_PROVIDER == "openrouter":
-            body["usage"] = {"include": True}
-        r = net.post_json(url, body, headers=headers)
-        if r is not None and r.status_code == 400:
-            # Not every model supports JSON mode, and not every endpoint accepts
-            # the usage flag; the prompt demands JSON anyway. Drop both and retry.
-            body.pop("response_format", None)
-            body.pop("usage", None)
+    for tier in tiers():
+        # le compte de repli a son propre modèle : la chaîne du principal ne
+        # veut rien dire chez lui
+        want = dict.fromkeys(chain if tier["name"] == "principal" else [tier["model"]])
+        headers = {"Content-Type": "application/json",
+                   **({"Authorization": f"Bearer {tier['key']}"} if tier["key"] else {})}
+        url = f"{tier['base']}/chat/completions"
+        dry = []
+        for model in want:
+            body = {"model": model,
+                    "messages": [{"role": "system", "content": system},
+                                 {"role": "user", "content": user}],
+                    "temperature": temperature, "max_tokens": max_tokens,
+                    "response_format": {"type": "json_object"}}
+            # asking for the real cost is an OpenRouter extension; other providers
+            # reject unknown top-level fields outright
+            if tier["provider"] == "openrouter":
+                body["usage"] = {"include": True}
             r = net.post_json(url, body, headers=headers)
-        if r is not None and r.status_code == 200:
-            used = model
+            if r is not None and r.status_code == 400:
+                # Not every model supports JSON mode, and not every endpoint accepts
+                # the usage flag; the prompt demands JSON anyway. Drop both and retry.
+                body.pop("response_format", None)
+                body.pop("usage", None)
+                r = net.post_json(url, body, headers=headers)
+            if r is not None and r.status_code == 200:
+                used = model
+                break
+            code = getattr(r, "status_code", "x")
+            dry.append(code in DRY)
+            seen.append(f"{tier['name']}:{model}={code}")
+            r = None
+        if r is not None:
             break
-        seen.append(f"{model}={getattr(r, 'status_code', 'x')}")
-        r = None
+        if dry and all(dry) and len(tiers()) > 1:
+            _tier_down[tier["name"]] = time.time() + TIER_COOLDOWN
+            print(f"  [ia] compte {tier['name']} ({tier['provider']}) sans jetons — "
+                  f"bascule sur le repli pendant {TIER_COOLDOWN // 60}min")
     if r is None:
         if all(v.endswith("429") for v in seen):
             _cooldown_until[0] = time.time() + COOLDOWN
@@ -268,6 +320,30 @@ def norm_category(c):
 # Assisted search: the expensive model, kept on a short leash
 # ---------------------------------------------------------------------------
 
+_credit_cache = {"at": 0.0, "left": None}
+
+def credit(max_age=300):
+    """Crédit réellement restant chez le fournisseur, en $, ou None s'il ne le dit pas.
+
+    Le registre ai_spend ne compte que le modèle d'entretien : il annonçait
+    0.36 $ dépensés quand le compte en avait réellement consommé 0.82 $. Pour
+    savoir s'il « reste des jetons », il faut demander au fournisseur.
+    """
+    if time.time() - _credit_cache["at"] < max_age:
+        return _credit_cache["left"]
+    left = None
+    if config.AI_PROVIDER == "openrouter" and config.AI_API_KEY:
+        r = net.get(f"{config.AI_BASE_URL}/credits",
+                    headers={"Authorization": f"Bearer {config.AI_API_KEY}"},
+                    throttle=False)
+        try:
+            d = r.json()["data"]
+            left = float(d["total_credits"]) - float(d["total_usage"])
+        except Exception:
+            left = None
+    _credit_cache.update(at=time.time(), left=left)
+    return left
+
 def spend_since(days=None):
     """What the interview model has cost over the window, in USD."""
     days = days or config.SMART_BUDGET_DAYS
@@ -302,9 +378,16 @@ def smart_chat(system, user, purpose, max_tokens=6000):
     Over budget it degrades to the cheap model rather than refusing: a duller
     interview beats a broken one.
     """
-    over = budget_left() <= 0
+    # deux raisons de rétrograder : le plafond que tu t'es fixé, et le compte
+    # réellement vide. La seconde n'était pas vérifiée : le registre ne voit que
+    # ses propres appels, pas ce que le modèle bon marché a consommé à côté.
+    left = credit()
+    dry = left is not None and left <= 0.05
+    over = budget_left() <= 0 or dry
     chain = list(config.AI_FALLBACKS) if over else [config.SMART_MODEL, *config.AI_FALLBACKS]
-    if over:
+    if dry:
+        print(f"  [ia] crédit {config.AI_PROVIDER} épuisé — repli sur {config.AI_MODEL}")
+    elif over:
         print(f"  [ia] plafond {config.SMART_BUDGET_USD}$ atteint — repli sur {config.AI_MODEL}")
     return chat(system, user, models=chain, max_tokens=max_tokens,
                 on_usage=lambda m, u: record_spend(m, u, purpose)), over
