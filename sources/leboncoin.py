@@ -14,7 +14,7 @@ C'est un moniteur, pas un moteur de recherche : trié par date, il suffit de
 remonter jusqu'au déjà-vu. Pas besoin du corpus national, seulement de ce qui
 est nouveau depuis le dernier passage.
 """
-import json, time
+import json, re, time
 import db, config
 from .registry import adapter, LAST_STATUS
 
@@ -33,6 +33,28 @@ PAGE_DELAY = 4.0                          # entre deux pages, mesuré nécessair
 # Un refus n'est pas une erreur à réessayer : c'est un « non » qui doit mettre
 # la source en retrait, sinon on transforme un blocage temporaire en définitif.
 BLOCKED_HINTS = ("datadome", "blocked", "suspicious", "403", "forbidden")
+
+# « Remise en main propre » ne veut PAS dire « pas d'envoi ». Le plus souvent
+# c'est une option EN PLUS — « envoi possible ou remise en main propre ». Ne
+# rabattre le drapeau que quand le vendeur dit que c'est exclusif : marquer à
+# tort une annonce non livrable la rend invisible depuis la Suisse, puisque
+# `distance_ok` ne laisse passer les annonces lointaines QUE si elles sont
+# livrables.
+_HAND_ONLY = re.compile(
+    r"(main\s*propre[^.!?\n]{0,30}\b(uniquement|seulement|exclusivement|obligatoire)"
+    r"|\b(uniquement|seulement|exclusivement)[^.!?\n]{0,30}main\s*propre"
+    r"|(pas|aucun|jamais)\s+d[e']?\s*(envoi|expédition|exp[ée]dition)"
+    r"|(no|pas de)\s+shipping"
+    r"|je\s+n[e']\s*(envoie|exp[ée]die)\s*pas)", re.I)
+
+def hand_delivery_only(text):
+    """Le vendeur exclut-il explicitement l'envoi ?
+
+    Vrai seulement sur une exclusivité affirmée. « Envoi ou remise en main
+    propre » reste livrable — c'est le cas le plus fréquent, et le confondre
+    coûterait toutes les annonces françaises livrables.
+    """
+    return bool(_HAND_ONLY.search(text or ""))
 
 # leboncoin -> vocabulaire de l'app. Un état inconnu vaut None, pas une
 # supposition : `condition_min` filtre dessus.
@@ -160,6 +182,15 @@ def _attrs(ad):
     return out
 
 
+def _shipping(ad):
+    """0/1. L'API fait foi, sauf si le vendeur écrit noir sur blanc l'inverse."""
+    api = str(_attr(ad, "shippable")).lower() == "true"
+    if not api:
+        return 0
+    txt = f"{getattr(ad, 'subject', '') or ''} {getattr(ad, 'body', '') or ''}"
+    return 0 if hand_delivery_only(txt) else 1
+
+
 def _row(ad):
     """Une annonce lbc au format commun. Voir le tableau de SOURCES.md.
 
@@ -196,7 +227,7 @@ def _row(ad):
         "postal_code": g(loc, "zipcode"),          # suffit : geo.py résout hors ligne
         "country": (g(loc, "country") or "FR").upper()[:2],
         "lat": g(loc, "lat"), "lon": g(loc, "lng"),
-        "shipping": 1 if str(_attr(ad, "shippable")).lower() == "true" else 0,
+        "shipping": _shipping(ad),
         "image": images[0] if images else None,
         "images": json.dumps(images[:8]),          # JSON, pas une liste
         "posted_at": _ts(getattr(ad, "first_publication_date", None)),
@@ -222,6 +253,15 @@ def demo():
     assert len(_locations(spec)) == 1 and _locations(spec)[0].radius > 20_000
     assert _locations(None) == []
     assert _ts("2026-08-21 09:12:03") > 1_700_000_000
+    # l'option en plus reste livrable ; l'exclusivité ne l'est pas
+    assert not hand_delivery_only("Envoi possible ou remise en main propre")
+    assert not hand_delivery_only("Remise en main propre à Lyon, envoi Mondial Relay")
+    assert hand_delivery_only("Remise en main propre uniquement")
+    assert hand_delivery_only("En main propre seulement, pas d'envoi")
+    assert hand_delivery_only("Pas d'envoi, à récupérer sur place")
+    assert hand_delivery_only("je n'envoie pas")
+    assert not hand_delivery_only("70€ en main propre")   # simple mention de prix
+    assert not hand_delivery_only("")
     assert _ts(None) is None and _ts("n'importe quoi") is None
 
     class FakeLoc:

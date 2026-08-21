@@ -99,6 +99,13 @@ def results(sid):
         where.append("l.source = ?"); args.append(f["fsource"])
     if f.get("floc"):
         where.append("l.location_raw LIKE ?"); args.append(f"%{f['floc']}%")
+    # « livrable » : les annonces à retirer sur place sont inutiles quand le
+    # vendeur est à 600 km. Le drapeau vient de l'API du site, corrigé quand le
+    # vendeur écrit noir sur blanc qu'il n'envoie pas.
+    if f.get("fship") == "1":
+        where.append("l.shipping = 1")
+    elif f.get("fship") == "0":
+        where.append("(l.shipping IS NULL OR l.shipping = 0)")
     if f.get("fseller"):
         where.append("l.seller_type = ?"); args.append(f["fseller"])
     if f.get("fauction") == "1":

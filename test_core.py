@@ -1872,6 +1872,53 @@ def test_assistant_wait_reports_real_progress():
     assert src.count("def work(state, step)") == 2, "les jobs ne rapportent pas d'étape"
     assert 'step("' in src
 
+def test_hand_delivery_only_is_not_the_same_as_mentioning_it():
+    """« Remise en main propre » est le plus souvent une option EN PLUS.
+
+    La confondre avec « pas d'envoi » coûterait toutes les annonces françaises
+    livrables : distance_ok ne laisse passer une annonce lointaine QUE si elle
+    est marquée livrable.
+    """
+    from sources import leboncoin as lbcmod
+    livrable = ["Envoi possible ou remise en main propre",
+                "Remise en main propre à Lyon, envoi Mondial Relay",
+                "70€ en main propre",
+                "remise du vélo en main propre",
+                ""]
+    exclusif = ["Remise en main propre uniquement",
+                "En main propre seulement, pas d'envoi",
+                "Pas d'envoi, à récupérer sur place",
+                "uniquement en main propre",
+                "je n'envoie pas"]
+    for t in livrable:
+        assert not lbcmod.hand_delivery_only(t), f"marqué non livrable à tort : {t!r}"
+    for t in exclusif:
+        assert lbcmod.hand_delivery_only(t), f"exclusivité manquée : {t!r}"
+
+    # l'API fait foi quand elle dit non ; le texte ne peut que rabattre, jamais lever
+    class At:
+        def __init__(self, v): self.value, self.value_label, self.key_label = v, v, None
+    class Ad:
+        subject, body = "Vélo", "Envoi ou remise en main propre"
+        attributes = {"shippable": At("true")}
+    assert lbcmod._shipping(Ad()) == 1
+    Ad.body = "Remise en main propre uniquement"
+    assert lbcmod._shipping(Ad()) == 0, "le texte n'a pas rabattu le drapeau"
+    Ad.attributes = {"shippable": At("false")}
+    Ad.body = "Envoi possible"
+    assert lbcmod._shipping(Ad()) == 0, "le texte a levé un drapeau que l'API refusait"
+
+def test_results_can_filter_on_delivery():
+    import app
+    sid = db.q("SELECT id FROM searches ORDER BY id LIMIT 1", one=True)
+    if not sid:
+        return
+    c = app.app.test_client()
+    html = c.get(f"/search/{sid['id']}").get_data(as_text=True)
+    assert 'name="fship"' in html, "pas de filtre livraison"
+    for v in ("1", "0"):
+        assert c.get(f"/search/{sid['id']}?fship={v}").status_code == 200
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 89 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 91 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -229,6 +229,18 @@ l'autre, et entièrement consultables, corrigeables et effaçables dans **Profil
 
 ---
 
+## Livrable ou pas
+
+Un filtre **livraison** est disponible sur la page de résultats — c'est la seule chose qui
+compte quand le vendeur est à 600 km. Le drapeau vient de l'API du site (`shippable` chez
+leboncoin, `face_to_face` pour un retrait sur place).
+
+Le texte du vendeur peut le **rabattre**, jamais le lever : « remise en main propre
+uniquement », « pas d'envoi », « je n'envoie pas ». Une simple mention ne suffit pas —
+« envoi possible **ou** remise en main propre » reste livrable, et c'est le cas le plus
+fréquent. Confondre les deux coûterait toutes les annonces françaises livrables, puisque
+`distance_ok` ne laisse passer une annonce lointaine **que** si elle est marquée livrable.
+
 ## Traductions
 
 Chaque annonce qui entre en base est traduite en **français et en anglais**, et
@@ -393,7 +405,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 89 suites, sans réseau |
+| `test_core.py` | 91 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

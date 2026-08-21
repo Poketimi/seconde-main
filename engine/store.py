@@ -18,10 +18,15 @@ def upsert_listing(d):
             db.run("INSERT OR IGNORE INTO listing_prices(listing_id,ts,price) VALUES(?,?,?)",
                    (row["id"], now, d["price"]))
         # auctions move: refresh the live bid data every time we see them
+        # `shipping` se rafraîchit à chaque passage plutôt que COALESCE : un
+        # vendeur active ou coupe l'envoi en cours de route, et les annonces
+        # ingérées avant qu'on sache le lire portaient toutes 0.
         db.run("""UPDATE listings SET last_seen=?, active=1, status='active', gone_at=NULL,
                   price=COALESCE(?,price), bids=COALESCE(?,bids),
+                  shipping=COALESCE(?,shipping),
                   auction_end=COALESCE(?,auction_end) WHERE id=?""",
-               (now, d.get("price"), d.get("bids"), d.get("auction_end"), row["id"]))
+               (now, d.get("price"), d.get("bids"), d.get("shipping"),
+                d.get("auction_end"), row["id"]))
         return row["id"], False
     # one guard here beats a guard in every adapter: sqlite binds scalars only
     d = {**d, "dup_key": dup_key(d)}
