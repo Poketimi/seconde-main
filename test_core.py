@@ -1919,6 +1919,53 @@ def test_results_can_filter_on_delivery():
     for v in ("1", "0"):
         assert c.get(f"/search/{sid['id']}?fship={v}").status_code == 200
 
+def test_unknown_shipping_is_not_reported_as_pickup_only():
+    """NULL veut dire « on ne sait pas », pas « retrait sur place ».
+
+    anibis, tutti et facebook ne publient aucune information de livraison :
+    1030 annonces affichaient « retrait sur place », une affirmation que
+    personne ne nous avait faite.
+    """
+    import app
+    db.run("DELETE FROM listings WHERE url LIKE 'https://ship/%'")
+    ids = {}
+    for tag, val in (("inconnu", None), ("sur-place", 0), ("livrable", 1)):
+        ids[tag] = db.run(
+            "INSERT INTO listings(url,source,title,shipping,first_seen) VALUES(?,?,?,?,?)",
+            (f"https://ship/{tag}", "fake", f"Vélo {tag}", val, time.time()))
+    c = app.app.test_client()
+    got = {t: c.get(f"/listing/{i}").get_data(as_text=True) for t, i in ids.items()}
+    assert "non précisée" in got["inconnu"], "l'inconnu est présenté comme une certitude"
+    assert "retrait sur place" not in got["inconnu"]
+    assert "retrait sur place" in got["sur-place"]
+    assert "livraison" in got["livrable"] and "non précisée" not in got["livrable"]
+
+    # l'adaptateur ricardo ne doit rien affirmer : son sitemap ne dit rien
+    import inspect
+    from sources import ricardo as rmod
+    assert '"shipping": None' in inspect.getsource(rmod), \
+        "le sitemap ricardo affirmerait « retrait sur place »"
+
+    for tag, i in ids.items():
+        db.run("DELETE FROM listings WHERE id=?", (i,))
+
+def test_delivery_filter_separates_unknown_from_pickup():
+    import app
+    sid = db.q("SELECT id FROM searches ORDER BY id LIMIT 1", one=True)
+    if not sid:
+        return
+    html = app.app.test_client().get(f"/search/{sid['id']}").get_data(as_text=True)
+    for v in ('value="1"', 'value="0"', 'value="?"'):
+        assert v in html, f"option {v} absente du filtre livraison"
+    src = inspect_source_of_results()
+    assert 'where.append("l.shipping = 0")' in src, \
+        "« retrait sur place » engloberait les annonces dont on ignore tout"
+
+def inspect_source_of_results():
+    import inspect
+    from web import searches
+    return inspect.getsource(searches)
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

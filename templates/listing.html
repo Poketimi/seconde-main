@@ -69,8 +69,12 @@
     <div class="price-row">
       <span class="price big">{{ l.price|money(l.currency) }}</span>
       {% if l.auction_end %}<span class="chip">{{ 'enchère + achat direct' if l.price_type != 'auction' else 'enchère' }}</span>{% endif %}
-      {% if l.shipping %}<span class="chip">livraison {{ l.shipping_cost|money(l.currency) if l.shipping_cost else 'incluse' }}</span>
-      {% else %}<span class="chip">retrait sur place</span>{% endif %}
+      {# NULL = on ne sait pas. L'afficher « retrait sur place » affirmait
+         quelque chose que le site ne nous a jamais dit — anibis, tutti et
+         facebook ne publient aucune information de livraison. #}
+      {% if l.shipping == 1 %}<span class="chip">livraison {{ l.shipping_cost|money(l.currency) if l.shipping_cost else 'incluse' }}</span>
+      {% elif l.shipping == 0 %}<span class="chip">retrait sur place</span>
+      {% else %}<span class="chip">livraison non précisée</span>{% endif %}
     </div>
 
     {% if l.auction_end %}

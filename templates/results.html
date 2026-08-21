@@ -37,6 +37,7 @@
     <option value="">livraison : peu importe</option>
     <option value="1" {{ 'selected' if f.fship=='1' }}>livrable seulement</option>
     <option value="0" {{ 'selected' if f.fship=='0' }}>retrait sur place seulement</option>
+    <option value="?" {{ 'selected' if f.fship=='?' }}>livraison non précisée</option>
   </select>
   <select name="fseller"><option value="">tout vendeur</option>
     <option value="private" {{ 'selected' if f.fseller=='private' }}>particulier</option>

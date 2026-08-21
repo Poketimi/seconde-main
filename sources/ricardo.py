@@ -47,7 +47,9 @@ def ricardo(query, spec=None):
             "category": None, "condition": None,
             "seller_type": None, "seller_name": None, "seller_key": None,
             "location_raw": None, "postal_code": None, "country": "CH",
-            "lat": None, "lon": None, "shipping": 0, "shipping_cost": None,
+            # le sitemap ne porte ni prix ni livraison : None, pas 0. Un 0
+            # affirmerait « retrait sur place » sans que ricardo l'ait dit.
+            "lat": None, "lon": None, "shipping": None, "shipping_cost": None,
             "image": None, "images": "[]", "posted_at": None,
             "attrs": json.dumps({"source_path": "sitemap", "price_unknown": True}),
             "raw": json.dumps({"from": "sitemap", "url": u}),

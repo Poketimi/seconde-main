@@ -105,7 +105,9 @@ def results(sid):
     if f.get("fship") == "1":
         where.append("l.shipping = 1")
     elif f.get("fship") == "0":
-        where.append("(l.shipping IS NULL OR l.shipping = 0)")
+        where.append("l.shipping = 0")          # su, pas supposé
+    elif f.get("fship") == "?":
+        where.append("l.shipping IS NULL")
     if f.get("fseller"):
         where.append("l.seller_type = ?"); args.append(f["fseller"])
     if f.get("fauction") == "1":
