@@ -69,10 +69,19 @@ def log(url, status, nbytes=0, cached=False, note=""):
               VALUES(?,?,?,?,?,?)""",
            (time.time(), url[:300], str(status), nbytes, 1 if cached else 0, note[:200]))
 
-
-PROSE_BANS = ()
+# --- robots ---------------------------------------------------------------
+# Interdictions en prose, invisibles pour urllib.robotparser. Le robots.txt de
+# leboncoin s'ouvre sur « It's forbidden to use search robots or other automatic
+# methods to access Leboncoin.fr » alors que les règles lisibles par machine,
+# seules, se lisent « autorisé ».
+PROSE_BANS = ("forbidden to use search robots", "interdit d'utiliser des robots",
+              "automatic methods to access", "only permitted with special permission",
+              "autorisation expresse", "scraping is prohibited", "no scraping")
 
 def policy(domain):
+    """-> (permis, raison). Lit robots.txt comme un humain, pas seulement comme
+    un analyseur : les interdictions en prose et les listes de robots nommés
+    comptent autant que les règles Disallow."""
     raw = _robots_text.get(domain)
     if raw is None:
         return False, "robots.txt illisible"

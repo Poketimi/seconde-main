@@ -4,6 +4,7 @@
     util.py       extraction partagée (JSON embarqué, galeries, nombres)
     smg.py        anibis + tutti
     ricardo.py    ricardo, par son sitemap
+    leboncoin.py  leboncoin, par le client d'API `lbc`
     facebook.py   facebook marketplace, via le navigateur connecté
     mail.py       sites refusant le crawl, lus dans leurs alertes e-mail
 
@@ -18,6 +19,7 @@ from .util import (_next_data, _flight_blob, json_objects_with, find_lists,
                    _gallery_fb, _gallery_smg, _gallery_ricardo)
 from .smg import anibis, tutti, _smg_search
 from .ricardo import ricardo
+from .leboncoin import leboncoin
 from .facebook import fb_marketplace, generic, BROWSER_SEARCH
 from .mail import DENIED_BY_OPERATOR
 

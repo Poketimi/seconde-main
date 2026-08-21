@@ -123,7 +123,7 @@ def crawler_page():
     # Le domaine appartient-il à un site qu'on a décidé de ne pas crawler ?
     site_of = {v: k for k, v in SITE_DOMAINS.items()}
     doms = []
-    for d in ("www.ricardo.ch", "www.anibis.ch", "www.tutti.ch", "www.leboncoin.fr"):
+    for d in ("www.ricardo.ch", "www.anibis.ch", "www.tutti.ch"):
         st = crawler.state(d)
         rp = crawler.robots(d)
         site = site_of.get(d.replace("www.", ""), "")
@@ -157,6 +157,9 @@ def crawler_page():
 @app.route("/sources")
 def sources_page():
     engine.forget_removed_sources()      # une source retirée n'est pas une panne
+    # Une source jamais lancée depuis qu'elle existe n'a pas de verdict : mieux
+    # vaut le dire que d'afficher celui de l'adaptateur qu'elle a remplacé.
+    engine.forget_stale_verdicts()
     health = {r["source"]: dict(r) for r in engine.health()}
     rows = []
     for name in sorted(sources.ADAPTERS):

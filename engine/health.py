@@ -128,6 +128,21 @@ def forget_removed_sources():
         db.run("DELETE FROM source_health WHERE source=?", (s,))
     return stale
 
+STALE_AFTER = 6 * 3600
+
+def forget_stale_verdicts():
+    """Efface un verdict trop vieux pour être encore vrai.
+
+    Quand un adaptateur est remplacé — leboncoin est passé des alertes e-mail à
+    son API — l'ancienne ligne de santé survit et la page continue d'annoncer
+    « aucun résultat » pour du code qui n'existe plus. Un verdict qui n'a pas
+    été rafraîchi depuis des heures vaut « jamais lancé », pas « en panne ».
+    """
+    cutoff = time.time() - STALE_AFTER
+    return db.run_count(
+        "DELETE FROM source_health WHERE COALESCE(last_run,0) < ? AND status <> 'ok'",
+        (cutoff,))
+
 def health():
     return db.q("SELECT * FROM source_health ORDER BY source")
 

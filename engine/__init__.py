@@ -21,6 +21,7 @@ from .health import *     # noqa: F401,F403
 from .scan import *       # noqa: F401,F403
 from .checks import *     # noqa: F401,F403
 from .match import _norm, _number_belongs_to           # noqa: F401
+from .health import forget_stale_verdicts                              # noqa: F401
 from .health import (_active, _active_lock, _NOTIFIER, _last_recovery,   # noqa: F401
                      _as_str)                                            # noqa: F401
 from . import match, store, health, scan, checks       # noqa: F401

@@ -1,0 +1,199 @@
+"""leboncoin par le client d'API `lbc`. Aucun crawl : rien ne passe par crawler.py.
+
+Le filtre géographique est délibérément **absent par défaut**. L'app sait déjà
+faire mieux :
+
+  - une recherche sans origine accepte tout (`distance_ok` renvoie True
+    d'emblée) : un rayon envoyé au site ne filtrerait rien d'utile ;
+  - `shipping_ok` court-circuite la distance — un rayon de 20 min jetterait une
+    annonce livrable à 500 km que l'app aurait gardée ;
+  - avec des origines, `geo.best_origin` calcule le vrai temps de trajet par
+    mode, affiné par OSRM. Un cercle en kilomètres est plus grossier.
+
+C'est un moniteur, pas un moteur de recherche : trié par date, il suffit de
+remonter jusqu'au déjà-vu. Pas besoin du corpus national, seulement de ce qui
+est nouveau depuis le dernier passage.
+"""
+import json, time
+import db, config
+from .registry import adapter, LAST_STATUS
+
+try:
+    import lbc
+except ImportError:                       # absent : on le dit, on ne casse rien
+    lbc = None
+
+_client = None
+PER_PAGE = 35
+MAX_PAGES = 6                             # garde-fou : ~200 annonces par cycle
+
+
+def client():
+    global _client
+    if _client is None and lbc is not None:
+        _client = lbc.Client()
+    return _client
+
+
+def _known_urls():
+    """Ce qu'on a déjà vu : sert à savoir quand arrêter de paginer."""
+    return {r["url"] for r in
+            db.q("SELECT url FROM listings WHERE source='leboncoin'")}
+
+
+def _locations(spec):
+    """Un filtre géographique SEULEMENT quand il ne peut rien coûter.
+
+    C'est-à-dire : des origines existent ET la recherche refuse la livraison.
+    Sinon on ne filtre pas et `engine.distance_ok` tranche sur le vrai temps de
+    trajet. Le rayon est volontairement large : le filtre exact repasse
+    derrière, alors qu'un rayon trop court perd des annonces en silence.
+    """
+    if not lbc or not spec or spec["shipping_ok"]:
+        return []
+    try:
+        origins = json.loads(spec["origins"] or "[]")
+    except (KeyError, TypeError, ValueError):
+        return []
+    out = []
+    for o in origins:
+        if o.get("lat") is None or o.get("lon") is None:
+            continue
+        mode = o.get("mode") or "car"
+        km = (o.get("max_minutes") or 30) / 60.0 * config.MODE_SPEED_KMH.get(mode, 30.0)
+        out.append(lbc.City(lat=o["lat"], lng=o["lon"],
+                            radius=int(km * 1000 * 1.5),   # large exprès
+                            city=o.get("label") or ""))
+    return out
+
+
+@adapter("leboncoin")
+def leboncoin(query, spec=None):
+    if lbc is None:
+        LAST_STATUS["leboncoin"] = ("error", "module `lbc` non installé")
+        return []
+    kwargs = {"text": query, "limit": PER_PAGE,
+              "sort": lbc.Sort.NEWEST, "ad_type": lbc.AdType.OFFER}
+    locs = _locations(spec)
+    if locs:
+        kwargs["locations"] = locs
+    # price/square passent par **kwargs côté lbc, pas par un paramètre nommé
+    hi = (spec or {}).get("price_max") if spec else None
+    if hi:
+        kwargs["price"] = [int((spec.get("price_min") or 0)), int(hi)]
+
+    known, rows, seen = _known_urls(), [], set()
+    for page in range(1, MAX_PAGES + 1):
+        try:
+            result = client().search(page=page, **kwargs)
+        except Exception as e:
+            # une exception vaut « panne » : retrait exponentiel + notification
+            LAST_STATUS["leboncoin"] = ("error", f"{type(e).__name__}: {e}"[:200])
+            return rows
+        ads = [a for a in (result.ads or []) if getattr(a, "url", None)]
+        for a in ads:
+            if a.url not in seen:
+                seen.add(a.url)
+                rows.append(_row(a))
+        # trié par date : une page entièrement connue signifie que la suite l'est
+        if not ads or all(a.url in known for a in ads):
+            break
+        if page >= getattr(result, "max_pages", MAX_PAGES):
+            break
+    return rows
+
+
+def _ts(iso):
+    """« 2026-08-21 09:12:03 » -> epoch. leboncoin date en heure locale."""
+    if not iso:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return time.mktime(time.strptime(str(iso)[:19], fmt))
+        except ValueError:
+            continue
+    return None
+
+
+def _attrs(ad):
+    """Les attributs de catégorie, aplatis en {clé: libellé lisible}."""
+    out = {}
+    for key, at in (getattr(ad, "attributes", None) or {}).items():
+        val = getattr(at, "value_label", None) or getattr(at, "value", None)
+        if val not in (None, ""):
+            out[getattr(at, "key_label", None) or key] = val
+    return out
+
+
+def _row(ad):
+    """Une annonce lbc au format commun. Voir le tableau de SOURCES.md.
+
+    Rien n'est deviné : un champ que l'API ne donne pas reste None. Un faux prix
+    pollue les médianes du catalogue de façon permanente.
+
+    `ad.user` déclenche une requête supplémentaire par annonce : on ne le touche
+    pas ici. sellers.py enrichit le vendeur à l'ouverture de la fiche, quand ça
+    concerne une annonce que tu regardes vraiment.
+    """
+    loc = getattr(ad, "location", None)
+    g = lambda o, *names: next((getattr(o, n) for n in names
+                                if o is not None and getattr(o, n, None) is not None), None)
+    images = list(getattr(ad, "images", None) or [])
+    return {
+        "url": ad.url,
+        "source": "leboncoin",
+        "source_id": str(getattr(ad, "id", "") or ""),
+        "title": g(ad, "subject", "title"),
+        "description": getattr(ad, "body", None),
+        "price": float(ad.price) if getattr(ad, "price", None) else None,
+        "currency": "EUR",
+        "price_type": "fixed",
+        "category": getattr(ad, "category_name", None),
+        # lbc ne livre le type de vendeur qu'en chargeant ad.user : ne rien inventer
+        "seller_type": None,
+        "seller_name": None,
+        "seller_key": str(getattr(ad, "_user_id", "") or "") or None,
+        "location_raw": g(loc, "city", "label"),
+        "postal_code": g(loc, "zipcode"),          # suffit : geo.py résout hors ligne
+        "country": (g(loc, "country") or "FR").upper()[:2],
+        "lat": g(loc, "lat"), "lon": g(loc, "lng"),
+        "shipping": 0,                             # non exposé sur l'annonce
+        "image": images[0] if images else None,
+        "images": json.dumps(images[:8]),          # JSON, pas une liste
+        "posted_at": _ts(getattr(ad, "first_publication_date", None)),
+        "attrs": json.dumps(_attrs(ad), ensure_ascii=False),
+        "raw": json.dumps({"id": getattr(ad, "id", None),
+                           "category_id": getattr(ad, "category_id", None),
+                           "brand": getattr(ad, "brand", None),
+                           "status": getattr(ad, "status", None)},
+                          ensure_ascii=False, default=str)[:20000],
+    }
+
+
+def demo():
+    """Sans réseau : le format, et le fait qu'un module absent ne casse rien."""
+    if lbc is None:
+        assert leboncoin("maison") == []
+        print("leboncoin ok (module absent)")
+        return
+    # une recherche qui accepte la livraison ne filtre RIEN géographiquement
+    spec = {"shipping_ok": 1, "origins": '[{"lat":46,"lon":6,"max_minutes":20}]'}
+    assert _locations(spec) == [], "un rayon jetterait les annonces livrables"
+    spec = {"shipping_ok": 0, "origins": '[{"lat":46,"lon":6,"max_minutes":20,"mode":"car"}]'}
+    assert len(_locations(spec)) == 1 and _locations(spec)[0].radius > 20_000
+    assert _locations(None) == []
+    assert _ts("2026-08-21 09:12:03") > 1_700_000_000
+    assert _ts(None) is None and _ts("n'importe quoi") is None
+
+    class FakeLoc:
+        city, zipcode, lat, lng, country, label = "Annemasse", "74100", 46.19, 6.23, "FR", None
+    class FakeAd:
+        id, url, subject, body, price = 42, "https://www.leboncoin.fr/ad/x/42", "Vélo", "bon état", 1250.0
+        images, category_name, first_publication_date = ["https://i/a.jpg"], "Vélos", "2026-08-21 09:12:03"
+        location, attributes, _user_id, brand, status, category_id = FakeLoc(), {}, "u9", None, "active", "55"
+    r = _row(FakeAd())
+    assert r["price"] == 1250.0 and r["currency"] == "EUR" and r["country"] == "FR"
+    assert r["postal_code"] == "74100" and r["source_id"] == "42"
+    assert json.loads(r["images"]) == ["https://i/a.jpg"]
+    assert r["seller_type"] is None, "le type de vendeur n'est pas connu sans ad.user"
+    print("leboncoin ok")

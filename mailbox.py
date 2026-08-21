@@ -22,8 +22,9 @@ import config, db
 
 # De qui viennent les alertes, et à quoi ressemble un lien d'annonce.
 SITES = {
-    "leboncoin":   {"from": ("leboncoin.fr",),
-                    "link": r"https?://(?:www\.)?leboncoin\.fr/(?:ad|vi)/[\w/-]*?(\d{6,})"},
+    # Vide : leboncoin passe maintenant par son API (sources/leboncoin.py).
+    # Rajouter un site ici recrée son adaptateur automatiquement — c'est une
+    # ligne, et tout le reste (IMAP, extraction, réglages) est déjà en place.
 }
 
 # Les séparateurs de milliers ne valent que par groupes de trois. Sans cette
@@ -189,6 +190,20 @@ def probe():
     return True, "Alertes lues : " + ", ".join(f"{k} {v}" for k, v in sorted(per.items()))
 
 def demo():
+    # SITES est vide tant qu'aucun site n'est branché sur les alertes : le test
+    # de l'extracteur ne doit pas dépendre de ce réglage-là.
+    SITES.setdefault("leboncoin", {
+        "from": ("leboncoin.fr",),
+        "link": r"https?://(?:www\.)?leboncoin\.fr/(?:ad|vi)/[\w/-]*?(\d{6,})"})
+    try:
+        _demo_body()
+    finally:
+        if not _CONFIGURED_SITES:
+            SITES.pop("leboncoin", None)
+
+_CONFIGURED_SITES = dict(SITES)      # figé à l'import : ce qui est vraiment branché
+
+def _demo_body():
     html = """<html><body>
       <table><tr><td>
         <a href="https://www.leboncoin.fr/ad/velos/2891234567?utm=alert">

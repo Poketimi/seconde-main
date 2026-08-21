@@ -395,19 +395,25 @@ def test_robots_prose_and_allowlists_are_obeyed():
     crawler._robots_text.pop("unknown.test", None)
     assert crawler.policy("unknown.test")[0] is False, "sans robots.txt: on s'abstient"
 
-def test_leboncoin_is_never_crawled():
-    """Their robots.txt forbids automated access in writing.
+def test_leboncoin_goes_through_its_api_not_the_crawler():
+    """leboncoin est servi par sources/leboncoin.py, un client d'API.
 
-    leboncoin does have an adapter again, but it reads the alert emails
-    leboncoin itself sends -- no request ever goes to their site. The rule
-    being pinned is "never crawled", which is what their robots.txt asks for,
-    not "no code path", which was only ever a proxy for it.
+    Ce qui doit rester vrai : le crawler ne le touche pas, et l'app ne prétend
+    plus nulle part qu'il n'est « jamais visité » — elle l'appelle.
     """
-    assert "leboncoin" in sources.DENIED_BY_OPERATOR, "the refusal must stand"
-    assert "leboncoin" in mailbox.SITES, "its adapter must be the mail one"
-    # allowed() returns (ok, reason); asserting on the tuple alone is always true
-    ok, why = crawler.allowed("https://www.leboncoin.fr/recherche?text=velo")
-    assert ok is False, f"the crawler would fetch leboncoin: {why}"
+    import ast, inspect
+    from sources import leboncoin as mod
+    assert "leboncoin" in sources.ADAPTERS
+    tree = ast.parse(inspect.getsource(mod))
+    imported = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            imported |= {a.name.split(".")[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom) and n.module:
+            imported.add(n.module.split(".")[0])
+    assert "crawler" not in imported, f"l'adaptateur passe par le crawler : {imported}"
+    assert "leboncoin" not in sources.DENIED_BY_OPERATOR, \
+        "la page Crawler affirmerait « jamais visité » un site que l'app appelle"
 
 def test_crawler_stops_on_denial():
     """403/429/CAPTCHA is a decision to respect, not an obstacle to route around."""
@@ -1425,24 +1431,19 @@ def test_layout_holds_on_a_phone():
         h = c.get(page).get_data(as_text=True)
         assert h.count("<table") <= h.count("<thead>"), f"{page}: table without thead"
 
-def test_crawler_page_never_calls_a_refused_site_active():
-    """The audit page must not claim to crawl a site we refuse on principle."""
+def test_crawler_page_only_lists_sites_it_crawls():
+    """La page d'audit ne doit parler que des domaines réellement visités."""
     import app
     html = app.app.test_client().get("/crawler").get_data(as_text=True)
     top = html[:html.index("Sites qui refusent")] if "Sites qui refusent" in html else html
-    for dom in ("www.leboncoin.fr",):
-        i = top.find(dom)
-        assert i > 0, f"{dom} missing from the domain table"
-        row = top[i:i + 900]
-        assert "refusé" in row, f"{dom} is shown as crawlable on the audit page"
-        assert ">actif<" not in row, f"{dom} still reads as actif"
-    # Nothing is asserted about a permitted site here: with no network the
-    # crawler cannot read robots.txt and fails closed, so tutti legitimately
-    # reads "refusé" in the suite. The regression being pinned is the opposite
-    # one -- a site refused on principle must never read as active.
-
-
-# --- eBay ------------------------------------------------------------------
+    assert "www.tutti.ch" in top and "www.anibis.ch" in top
+    assert "leboncoin" not in top.lower(), \
+        "leboncoin est servi par une API : le crawler n'a rien à en dire"
+    # et un site réellement refusé, s'il y en a un, ne doit jamais lire « actif »
+    for site in sources.DENIED_BY_OPERATOR:
+        i2 = top.find(site)
+        if i2 > 0:
+            assert "refusé" in top[i2:i2 + 900], f"{site} affiché comme crawlable"
 
 def test_interrupted_scan_does_not_leave_matches_provisional():
     """Phase 1 rows must not survive as "analyse en cours…" for ever.
@@ -1495,13 +1496,28 @@ def test_interrupted_scan_does_not_leave_matches_provisional():
 
 # --- email alerts: the legitimate route into sites that refuse the crawler ---
 
+import contextlib
+
+@contextlib.contextmanager
+def _mail_site(name):
+    """Branche un site le temps du test. mailbox.SITES est vide par défaut
+    depuis que leboncoin est passé par son API ; l'extracteur reste testable."""
+    added = name not in mailbox.SITES
+    mailbox.SITES.setdefault(name, {
+        "from": (f"{name}.fr",),
+        "link": rf"https?://(?:www\.)?{name}\.fr/(?:ad|vi)/[\w/-]*?(\d{{6,}})"})
+    try:
+        yield
+    finally:
+        if added:
+            mailbox.SITES.pop(name, None)
+
 def test_refused_sites_are_never_crawled_even_with_an_adapter():
-    """leboncoin now has an adapter. It must not reach leboncoin."""
+    """Un site refusé au crawl ne peut être servi que par ce qu'il nous envoie."""
     import ast, inspect
     for site in sources.DENIED_BY_OPERATOR:
         assert site in mailbox.SITES, \
-            f"{site} refuses crawling but has a non-mail adapter"
-    # the mail reader must not import the crawl layer at all
+            f"{site} refuse le crawl mais a un adaptateur qui n'est pas e-mail"
     tree = ast.parse(inspect.getsource(mailbox))
     imported = set()
     for n in ast.walk(tree):
@@ -1510,15 +1526,7 @@ def test_refused_sites_are_never_crawled_even_with_an_adapter():
         elif isinstance(n, ast.ImportFrom) and n.module:
             imported.add(n.module.split(".")[0])
     assert not ({"crawler", "browser", "net"} & imported), \
-        f"the mail reader reaches the network on its own: {imported}"
-    # and asking leboncoin with no mailbox configured must stay silent, not crawl
-    saved = config.IMAP_HOST
-    try:
-        config.IMAP_HOST = ""
-        assert sources.ADAPTERS["leboncoin"]("velo") == []
-        assert sources.LAST_STATUS["leboncoin"][0] == "login"
-    finally:
-        config.IMAP_HOST = saved
+        f"le lecteur d'e-mails sort sur le réseau tout seul : {imported}"
 
 def test_alert_email_is_parsed_into_listings():
     html = """<table>
@@ -1528,25 +1536,29 @@ def test_alert_email_is_parsed_into_listings():
         <span>6\u202f900 €</span></td></tr>
       <tr><td><a href="https://tracking.example.com/click">Se désabonner</a></td></tr>
     </table>"""
-    rows = mailbox.parse("leboncoin", html)
+    with _mail_site("leboncoin"):
+        rows = mailbox.parse("leboncoin", html)
     assert len(rows) == 2, [r["title"] for r in rows]
     assert rows[0]["price"] == 1250.0, rows[0]["price"]
     assert rows[1]["price"] == 6900.0, rows[1]["price"]
     assert rows[0]["currency"] == "EUR" and rows[0]["country"] == "FR"
     assert "?" not in rows[0]["url"], "tracking parameters kept in the url"
     # a title carrying digits must not be swallowed into the price
-    solo = mailbox.parse("leboncoin",
-        '<a href="https://www.leboncoin.fr/ad/x/2891234567">CAAD13</a><span>1 250 €</span>')
+    with _mail_site("leboncoin"):
+        solo = mailbox.parse("leboncoin",
+            '<a href="https://www.leboncoin.fr/ad/x/2891234567">CAAD13</a><span>1 250 €</span>')
     assert solo[0]["price"] == 1250.0, solo[0]["price"]
     # no price shown means no price invented
-    bare = mailbox.parse("leboncoin",
-        '<a href="https://www.leboncoin.fr/ad/x/2891234500">Titre seul</a>')
+    with _mail_site("leboncoin"):
+        bare = mailbox.parse("leboncoin",
+            '<a href="https://www.leboncoin.fr/ad/x/2891234500">Titre seul</a>')
     assert bare[0]["price"] is None
 
 def test_mail_listings_go_through_the_normal_pipeline():
-    rows = mailbox.parse("leboncoin",
-        '<a href="https://www.leboncoin.fr/ad/velos/2891234567">Vélo Cannondale</a>'
-        '<span>1 250 €</span>')
+    with _mail_site("leboncoin"):
+        rows = mailbox.parse("leboncoin",
+            '<a href="https://www.leboncoin.fr/ad/velos/2891234567">Vélo Cannondale</a>'
+            '<span>1 250 €</span>')
     db.run("DELETE FROM listings WHERE url=?", (rows[0]["url"],))
     lid, new = engine.upsert_listing(rows[0])
     assert new

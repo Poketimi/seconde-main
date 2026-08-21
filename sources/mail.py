@@ -35,9 +35,9 @@ for _site in mailbox.SITES:
 
 
 DENIED_BY_OPERATOR = {
-    # site -> raison, affichée telle quelle sur la page Crawler
-    "leboncoin": ("robots.txt interdit l'accès automatisé en toutes lettres et "
-                  "n'autorise que des robots nommés — jamais crawlé ; ses annonces "
-                  "arrivent par les alertes e-mail qu'il envoie lui-même"),
+    # site -> raison, affichée telle quelle sur la page Crawler.
+    # Vide : plus aucun site n'est à la fois refusé au crawl ET présent dans
+    # l'app. leboncoin en est sorti quand il est passé par son API — l'y
+    # laisser aurait fait dire à la page Crawler « jamais visité » d'un site
+    # que l'app appelle.
 }
-

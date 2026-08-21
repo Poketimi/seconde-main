@@ -3,6 +3,10 @@
 flask>=3.0
 beautifulsoup4>=4.12    # une seule page à parser proprement : reference.py
 
+# leboncoin, via son client d'API. Sans lui, l'adaptateur rend une liste vide
+# et /sources affiche « module `lbc` non installé » — le reste fonctionne.
+lbc
+
 # Facultatif — seulement pour Facebook Marketplace, qui exige une vraie session
 # connectée. Sans lui, toutes les autres sources fonctionnent.
 #   pip install playwright && playwright install chromium
