@@ -21,10 +21,11 @@
          href="{{ url_for('catalogue') }}">Catalogue</a>
       <a class="tab {{ 'on' if request.endpoint == 'favoris' }}" href="{{ url_for('favoris') }}">Favoris</a>
       <a class="tab {{ 'on' if request.endpoint in ('assist','assist_answers') }}" href="{{ url_for('assist') }}">Assistant</a>
-      <a class="tab {{ 'on' if request.endpoint == 'profil' }}" href="{{ url_for('profil') }}">Profil</a>
-      <a class="tab {{ 'on' if request.endpoint == 'connexions' }}" href="{{ url_for('connexions') }}">Connexions</a>
-      <a class="tab {{ 'on' if request.endpoint == 'crawler_page' }}" href="{{ url_for('crawler_page') }}">Crawler</a>
-      <a class="tab {{ 'on' if request.endpoint in ('reglages','compte') }}" href="{{ url_for('reglages') }}">Réglages</a>
+      {# Profil, Connexions et Crawler se consultent rarement : ils vivent
+         désormais sous Réglages, qui les liste en tête de page. #}
+      <a class="tab {{ 'on' if request.endpoint in
+         ('reglages','compte','profil','connexions','crawler_page','sources_page') }}"
+         href="{{ url_for('reglages') }}">Réglages</a>
       <span class="spacer"></span>
       <form method="post" action="{{ url_for('langue') }}" class="navlang">
         <input type="hidden" name="next" value="{{ request.full_path }}">

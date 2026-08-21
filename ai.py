@@ -147,7 +147,7 @@ def _cli_chat(system, user, model, timeout=CLI_TIMEOUT):
     return out.get("result"), (out.get("usage") or {})
 
 # Un compte à court de jetons répond 401/402/429. Le noter évite de reperdre un
-# aller-retour à chaque appel : on file directement sur le compte de repli.
+# aller-retour à chaque appel : on passe directement au compte suivant.
 _tier_down = {}
 TIER_COOLDOWN = 900         # 15 min
 DRY = (401, 402, 403, 429)  # clé refusée, plus de crédit, quota épuisé
@@ -197,9 +197,7 @@ def tiers(cli_ok=False, prefer=""):
                     "key": "", "model": config.CLAUDE_CLI_MODEL})
     for name, prov, base, key, model in (
             ("principal", config.AI_PROVIDER, config.AI_BASE_URL,
-             config.AI_API_KEY, config.AI_MODEL),
-            ("repli", config.ALT_PROVIDER, config.ALT_BASE_URL,
-             config.ALT_API_KEY, config.ALT_MODEL)):
+             config.AI_API_KEY, config.AI_MODEL),):
         if not base or not (key or _is_local(base)):
             continue
         if time.time() < _tier_down.get(name, 0):
@@ -213,8 +211,7 @@ def tiers(cli_ok=False, prefer=""):
 def tier_status():
     """Pour l'interface : quel compte sert, et lequel est en pause."""
     live = {t["name"] for t in tiers(cli_ok=True)}
-    rows = [("principal", config.AI_PROVIDER, config.AI_MODEL),
-            ("repli", config.ALT_PROVIDER, config.ALT_MODEL)]
+    rows = [("principal", config.AI_PROVIDER, config.AI_MODEL)]
     if config.CLAUDE_CLI:
         rows.insert(0, ("abonnement", "claude_cli (assistant seulement)",
                         config.CLAUDE_CLI_MODEL))
@@ -272,10 +269,7 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
             print(f"  [ia] abonnement Claude Code indisponible ({info}) — "
                   f"repli sur la clé d'API")
             continue
-        # le compte de repli a son propre modèle : la chaîne du principal ne
-        # veut rien dire chez lui
-        want = dict.fromkeys([want_model] if want_model else
-                             (chain if tier["name"] == "principal" else [tier["model"]]))
+        want = dict.fromkeys([want_model] if want_model else chain)
         headers = {"Content-Type": "application/json",
                    **({"Authorization": f"Bearer {tier['key']}"} if tier["key"] else {})}
         url = f"{tier['base']}/chat/completions"
@@ -306,10 +300,10 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
             r = None
         if r is not None:
             break
-        if dry and all(dry) and len(tiers()) > 1:
+        if dry and all(dry) and len(tiers(cli_ok=True)) > 1:
             _tier_down[tier["name"]] = time.time() + TIER_COOLDOWN
             print(f"  [ia] compte {tier['name']} ({tier['provider']}) sans jetons — "
-                  f"bascule sur le repli pendant {TIER_COOLDOWN // 60}min")
+                  f"mis de côté {TIER_COOLDOWN // 60}min")
     if r is None:
         if all(v.endswith("429") for v in seen):
             _cooldown_until[0] = time.time() + COOLDOWN

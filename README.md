@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 85 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 79 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -41,9 +41,7 @@ Mesuré, pas supposé. `/sources` dans l'app affiche l'état courant.
 | **tutti** | ✅ | même plateforme ; porte aussi **voitures, motos et immobilier** |
 | **ricardo** | ⚠️ sitemap | 50 000 URLs publiées pour les crawlers, mais **sans prix** |
 | **facebook marketplace** | ✅ | via un vrai navigateur connecté à ton compte |
-| **ebay** | 🔑 API | officielle et gratuite, 5000 requêtes/jour — demande des clés |
 | **leboncoin** | 📬 alerte | jamais crawlé — lu dans les alertes e-mail qu'il envoie |
-| **autoscout24 / motoscout24 / immoscout24** | 📬 alerte | idem |
 
 **Les quatre sites refusés le restent.** Leurs `robots.txt` interdisent l'accès automatisé :
 leboncoin s'ouvre sur une interdiction en toutes lettres et n'autorise nommément que
@@ -65,8 +63,6 @@ e-mail, et l'app lit ces messages en IMAP (`mailbox.py`). C'est la même donnée
 l'envers : ce n'est plus nous qui allons la chercher, c'est le site qui l'envoie, à sa
 cadence et de son plein gré. Aucun `robots.txt` n'entre en jeu.
 
-Ça vaut aussi pour les trois Scout24, qui refusent ce robot et envoient les mêmes alertes.
-
 **Mot de passe d'application obligatoire**, jamais celui du compte : Gmail, iCloud et Proton
 en génèrent un dédié et révocable. L'accès est en **lecture seule** — `BODY.PEEK` et
 `readonly=True`, donc rien n'est marqué lu, déplacé ni supprimé. Un libellé dédié évite de
@@ -81,22 +77,6 @@ les Scout24** et publie les mêmes catégories. `moto yamaha` y sort des BMW F80
 `appartement lausanne` des 3-pièces à Morges et Yverdon.
 
 ---
-
-### eBay : une API, pas du crawl
-
-eBay répond 403 à ce robot sur ses pages web, et publie une API pour ça. C'est la bonne
-réponse à un refus : prendre la porte ouverte, pas chercher la fenêtre. `ebay.py` n'importe
-même pas `crawler.py` — il n'y a pas de `robots.txt` à respecter sur un point d'accès conçu
-pour être appelé, et un test vérifie que ça reste vrai.
-
-Compte développeur gratuit sur [developer.ebay.com/my/keys](https://developer.ebay.com/my/keys)
-(clés **Production**, pas Sandbox), puis colle `AppID:CertID` dans /reglages. Le quota est de
-**5000 requêtes/jour** ; l'app en consomme quelques dizaines.
-
-Seules les annonces d'**occasion** sont demandées, et le filtre « livrable en Suisse » est
-appliqué d'office — ce qui rend `EBAY_DE` et `EBAY_FR` utiles autant que `EBAY_CH` : bien
-plus de volume, et seul ce qui t'arrive réellement remonte. Sans clés, l'adaptateur rend une
-liste vide et /sources dit « identifiants eBay absents » au lieu d'échouer en silence.
 
 ## Le crawler
 
@@ -172,7 +152,9 @@ l'API** — aucun bouton ne peut changer ça. Ce qui marche :
 ### Qui fait quoi, et qui paie
 
 Trois travaux, trois profils de coût. Le tableau de `/reglages` assigne à chacun un compte
-(**principal**, **repli**, **abonnement**) et un modèle ; modèle vide = celui du compte.
+(**principal** ou **abonnement**) et un modèle ; modèle vide = celui du compte.
+
+Deux comptes possibles : **principal** (ta clé d'API) et **abonnement** (Claude Code).
 
 | travail | fréquence | ce qui compte |
 |---|---|---|
@@ -188,28 +170,6 @@ même si le formulaire était contourné. Raison mesurée : un appel `claude -p`
 créé **23 703 jetons de cache** — le contexte de Claude Code voyage avec chaque appel. Deux
 appels par recherche, aucun problème ; des centaines par jour épuiseraient les limites de
 débit en minutes.
-
-### Deux comptes, bascule automatique
-
-Le bloc « compte de repli » prend un **second** service avec sa propre clé. Quand le
-principal n'a plus de jetons — 401, 402 ou 429 — l'app bascule dessus au sein du même appel
-et met l'épuisé de côté un quart d'heure, au lieu de retomber sur le tri par mots-clés.
-
-Seul OpenRouter publie son solde (`/credits`, affiché sur la page). Ailleurs la bascule se
-déclenche au premier appel refusé. Le registre `ai_spend` ne suffit pas : il ne compte que
-le modèle d'entretien, et annonçait 0,36 $ dépensés quand le compte en avait consommé 0,82 $.
-
-### Connexions
-
-L'onglet **Connexions** rassemble tout ce à quoi l'app doit être reliée — comptes d'IA,
-abonnement Claude Code, sessions de sites — avec l'état de chacun et un bouton pour le
-réparer. Une session expirée s'y voit et s'y répare sans ligne de commande : le bouton
-ouvre une fenêtre Terminal sur `claude auth login`, tu te connectes dans ton navigateur, et
-la page se met à jour toute seule quand c'est fait.
-
-L'app n'y touche à aucun identifiant : elle ouvre la porte, la connexion se fait dans ta
-fenêtre et ton navigateur, exactement comme le bouton de session Facebook. Un test vérifie
-que `cli_login` ne va lire ni trousseau ni fichier d'identifiants.
 
 ### Abonnement Claude Code
 
@@ -289,6 +249,11 @@ fausses pour ta région, c'est là que ça se règle.
 
 ## Interface
 
+Cinq onglets : **Accueil**, **Catalogue**, **Favoris**, **Assistant**, **Réglages**. Ce qui
+se consulte rarement — Connexions, Sources, Mes données, Crawler, Mot de passe — vit sous
+Réglages, qui les liste en tête de page. Les pages existent toujours et gardent leurs URL.
+
+
 Conçue pour le téléphone d'abord : les styles de base visent un petit écran, les points de
 rupture sont tous en `min-width`, et les grands écrans ajoutent des colonnes plutôt que de
 corriger. Sur téléphone la barre du haut tient sur **une** rangée — marque, bouton, menu —
@@ -337,8 +302,7 @@ automatique ne reçoive pas une page de connexion.
 | `sources.py` | un adaptateur par site |
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `ai.py` | modèles, lots, bascule entre comptes, budget |
-| `ebay.py` | API officielle eBay (OAuth + Browse) |
-| `mailbox.py` | alertes e-mail IMAP : leboncoin, Scout24 |
+| `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` | traductions |
 | `settings.py` | fournisseur / clé / modèles, réglables à chaud |
 | `auth.py` | le compte et le mot de passe |
@@ -347,7 +311,7 @@ automatique ne reçoive pas une page de connexion.
 | `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
 | `reference.py` | prix neuf de référence |
 | `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
-| `test_core.py` | 85 suites, sans réseau |
+| `test_core.py` | 79 suites, sans réseau |
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.

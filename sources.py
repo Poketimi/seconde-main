@@ -20,7 +20,7 @@ STATUS (probed 2026-08-19 from CH):
 """
 import re, json, time
 from urllib.parse import quote_plus, urljoin
-import net, browser, geo, crawler, ebay as ebay_api, mailbox
+import net, browser, geo, crawler, mailbox
 
 ADAPTERS = {}
 # Sites that answer no plain HTTP client: they sit behind Cloudflare Turnstile
@@ -553,20 +553,6 @@ def _browser_adapter(name, tmpl):
 # be circumventing an explicit denial, so no adapter is registered for them.
 # They stay visible in the UI as "refusé par le site", which is the honest
 # state, and would come back if the operator allowlisted this crawler.
-@adapter("ebay")
-def ebay(query, spec=None):
-    """eBay par son API officielle. Aucun crawl : eBay publie un point d'accès.
-
-    Les autres adaptateurs lisent des pages ; celui-ci appelle une API prévue
-    pour ça, avec un quota de 5000 requêtes/jour. Sans identifiants il rend []
-    et /sources dit pourquoi, au lieu d'échouer en silence.
-    """
-    rows = ebay_api.search(query, spec)
-    if not rows:
-        LAST_STATUS["ebay"] = (("login" if not ebay_api.configured() else "empty"),
-                               ebay_api.LAST_ERROR[0] or "0 résultat")
-    return rows
-
 # Les sites qui refusent le crawl mais envoient des alertes : on lit la boîte
 # mail, jamais leur site. Un seul relevé IMAP sert tous ces adaptateurs.
 _MAIL_CACHE = {"at": 0.0, "rows": []}
@@ -594,12 +580,10 @@ for _site in mailbox.SITES:
     ADAPTERS[_site] = _mail_adapter(_site)
 
 DENIED_BY_OPERATOR = {
-    "leboncoin": ("robots.txt interdit explicitement l'accès automatisé et "
-                  "n'autorise que Googlebot/Bingbot/Slurp — accès sur "
-                  "autorisation expresse uniquement"),
-    "autoscout24": "Cloudflare refuse les robots identifiés ; sitemap 403 également",
-    "motoscout24": "même protection qu'autoscout24",
-    "immoscout24": "même protection qu'autoscout24",
+    # site -> raison, affichée telle quelle sur la page Crawler
+    "leboncoin": ("robots.txt interdit l'accès automatisé en toutes lettres et "
+                  "n'autorise que des robots nommés — jamais crawlé ; ses annonces "
+                  "arrivent par les alertes e-mail qu'il envoie lui-même"),
 }
 
 LAST_STATUS = {}          # source -> (status, detail)

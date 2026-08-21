@@ -94,21 +94,9 @@ def fallback_chain(model=None, provider=None):
 
 AI_FALLBACKS = fallback_chain()
 
-# --- compte de repli ---------------------------------------------------
-# Deux comptes, essayés dans l'ordre. Le principal (AI_* ci-dessus) peut être
-# ton compte Anthropic ou OpenAI ; quand il n'a plus de jetons, l'app bascule
-# toute seule sur celui-ci et continue au lieu de s'arrêter.
-# Aucun fournisseur sauf OpenRouter ne publie son solde : la bascule se fait
-# donc sur l'échec réel d'un appel (401/402/429), pas sur une estimation.
-ALT_PROVIDER = os.environ.get("ALT_PROVIDER", "").strip().lower()
-_abase, _amodel = PROVIDERS.get(ALT_PROVIDER, ("", ""))
-ALT_API_KEY  = os.environ.get("ALT_API_KEY", "").strip()
-ALT_BASE_URL = os.environ.get("ALT_BASE_URL", _abase).rstrip("/")
-ALT_MODEL    = os.environ.get("ALT_MODEL", _amodel)
-
 # --- qui fait quoi, et qui paie ---------------------------------------
 # Trois travaux, trois profils de coût très différents. Chacun peut viser un
-# compte ("principal", "repli", "abonnement") et un modèle précis ; modèle vide
+# compte ("principal" ou "abonnement") et un modèle précis ; modèle vide
 # = celui du compte. Réglable dans /reglages.
 JOBS = {
     "tri":        {"label": "Tri des annonces",
@@ -120,7 +108,6 @@ JOBS = {
 }
 ACCOUNTS = {
     "principal":  "Compte principal (clé d'API)",
-    "repli":      "Compte de repli (clé d'API)",
     "abonnement": "Abonnement Claude Code",
 }
 # L'abonnement est délibérément hors de portée du travail en masse : chaque
@@ -143,17 +130,6 @@ IMAP_PORT     = int(os.environ.get("IMAP_PORT", 993))
 IMAP_USER     = os.environ.get("IMAP_USER", "").strip()
 IMAP_PASSWORD = os.environ.get("IMAP_PASSWORD", "")
 IMAP_FOLDER   = os.environ.get("IMAP_FOLDER", "INBOX").strip()
-
-# --- eBay -------------------------------------------------------------
-# Pas du crawl : une API officielle, gratuite, 5000 requêtes/jour. Les
-# identifiants se créent sur https://developer.ebay.com/my/keys (compte
-# développeur gratuit) puis se collent dans /reglages.
-# EBAY_CH est le marché suisse ; DELIVERY_CH ne garde que ce qui est livrable
-# en Suisse, ce qui rend EBAY_DE et EBAY_FR utiles aussi.
-EBAY_CLIENT_ID     = os.environ.get("EBAY_CLIENT_ID", "").strip()
-EBAY_CLIENT_SECRET = os.environ.get("EBAY_CLIENT_SECRET", "").strip()
-EBAY_MARKETPLACE   = os.environ.get("EBAY_MARKETPLACE", "EBAY_CH").strip()
-EBAY_DELIVERY_CH   = os.environ.get("EBAY_DELIVERY_CH", "1") != "0"
 
 # --- abonnement Claude Code -------------------------------------------
 # Lance le binaire `claude -p` déjà installé sur la machine : les appels

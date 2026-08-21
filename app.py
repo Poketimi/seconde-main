@@ -426,7 +426,6 @@ def reglages():
             flash("Réglages enregistrés.")
         return redirect(url_for("reglages"))
     return render_template("reglages.html", cur=settings.current(),
-                           ebay_ok=__import__("ebay").configured(),
                            mail_ok=__import__("mailbox").configured(),
                            jobs=config.JOBS, accounts=config.ACCOUNTS,
                            no_sub=config.JOBS_NO_SUBSCRIPTION,
@@ -793,17 +792,12 @@ def listings():
     return redirect(url_for("catalogue", tab="annonces", q=request.args.get("q", "")))
 
 SITE_DOMAINS = {
-    "fb_marketplace": "facebook.com", "autoscout24": "autoscout24.ch",
-    "motoscout24": "motoscout24.ch", "immoscout24": "immoscout24.ch",
-    "ricardo": "ricardo.ch", "anibis": "anibis.ch", "tutti": "tutti.ch",
-    "leboncoin": "leboncoin.fr",
+    "fb_marketplace": "facebook.com", "ricardo": "ricardo.ch",
+    "anibis": "anibis.ch", "tutti": "tutti.ch", "leboncoin": "leboncoin.fr",
 }
 
 LOGIN_URLS = {
     "fb_marketplace": "https://www.facebook.com/marketplace/",
-    "autoscout24": "https://www.autoscout24.ch/fr",
-    "motoscout24": "https://www.motoscout24.ch/fr",
-    "immoscout24": "https://www.immoscout24.ch/fr",
     "ricardo": "https://www.ricardo.ch/fr",
 }
 
@@ -817,18 +811,16 @@ def crawler_page():
     # Le domaine appartient-il à un site qu'on a décidé de ne pas crawler ?
     site_of = {v: k for k, v in SITE_DOMAINS.items()}
     doms = []
-    for d in ("www.ricardo.ch", "www.anibis.ch", "www.tutti.ch",
-              "www.leboncoin.fr", "www.autoscout24.ch"):
+    for d in ("www.ricardo.ch", "www.anibis.ch", "www.tutti.ch", "www.leboncoin.fr"):
         st = crawler.state(d)
         rp = crawler.robots(d)
         site = site_of.get(d.replace("www.", ""), "")
         ok, why = crawler.policy(d)
         refused = site in sources.DENIED_BY_OPERATOR or not ok
         # "actif" ne voulait dire que « aucune pause HTTP en cours ». Un site
-        # qu'on ne visite jamais n'accumule aucun refus, donc leboncoin et
-        # autoscout24 s'affichaient actifs sur la page censée dire la vérité
-        # sur ce que ce robot fait. L'état part maintenant de la règle, pas
-        # du compteur.
+        # qu'on ne visite jamais n'accumule aucun refus, donc leboncoin
+        # s'affichait actif sur la page censée dire la vérité sur ce que ce
+        # robot fait. L'état part maintenant de la règle, pas du compteur.
         etat = ("refusé" if refused
                 else "en pause" if crawler.denied_for(d) > 0
                 else "actif" if (st and st["last_fetch"]) else "jamais visité")
@@ -956,7 +948,7 @@ def source_check(name):
     def run():
         # Always run the real adapter: a page that loads but yields no listings
         # is NOT ok, and reporting bytes-received as "ok" makes this page lie.
-        sources.search(name, {"immoscout24": "lausanne"}.get(name, "velo"))
+        sources.search(name, "velo")
         st, det = sources.LAST_STATUS.get(name, ("empty", ""))
         engine.record_health(name, st, det)
     threading.Thread(target=run, daemon=True).start()

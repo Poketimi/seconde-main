@@ -29,11 +29,11 @@ if _REAL_DB.exists():
             CREATE INDEX IF NOT EXISTS idx_places_name ON places(country, name);""")
         c.executemany("INSERT INTO places VALUES(?,?,?,?,?,?)", rows)
 
-import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings, auth, ebay, mailbox
+import geo, ai, sources, engine, browser, profile, sellers, reference, crawler, i18n, settings, auth, mailbox
 crawler.init()          # crawl_cache / crawl_log / domain_state on the scratch db
 
 def test_modules():
-    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo(); auth.demo(); ebay.demo(); mailbox.demo()
+    geo.demo(); ai.demo(); sources.demo(); engine.demo(); i18n.demo(); settings.demo(); auth.demo(); mailbox.demo()
 
 def test_end_to_end():
     """Whole pipeline on a fake source: no network, fully deterministic."""
@@ -1277,40 +1277,6 @@ def test_password_is_never_stored_in_the_clear():
     assert other["pw"] != row["pw"], "same password hashed identically"
     db.run("DELETE FROM users")
 
-def test_second_account_takes_over_when_the_first_is_dry():
-    """A provider out of tokens must hand off, not stop the app."""
-    saved = {k: getattr(config, k) for k in settings.FIELDS}
-    real_post = ai.net.post_json
-    ai._tier_down.clear()
-    calls = []
-    class R:
-        def __init__(self, code, txt=""):
-            self.status_code, self.text = code, txt
-        def json(self):
-            return {"choices": [{"message": {"content": '{"ok":true}'}}], "usage": {}}
-    def fake(url, body, headers=None, timeout=None):
-        calls.append(url)
-        return R(402) if "primaire" in url else R(200)
-    try:
-        config.AI_PROVIDER, config.AI_BASE_URL = "openai", "https://primaire/v1"
-        config.AI_API_KEY, config.AI_MODEL = "k1", "m1"
-        config.AI_FALLBACKS = ["m1"]
-        config.ALT_PROVIDER, config.ALT_BASE_URL = "openrouter", "https://repli/v1"
-        config.ALT_API_KEY, config.ALT_MODEL = "k2", "m2"
-        ai.net.post_json = fake
-        db.run("DELETE FROM ai_cache")
-
-        assert ai.chat("s", "u") == '{"ok":true}', "fallback account never reached"
-        assert any("primaire" in u for u in calls) and any("repli" in u for u in calls)
-        assert ai._tier_down.get("principal", 0) > time.time(), \
-            "dry account not parked; it will be retried on every single call"
-        assert [t["name"] for t in ai.tiers()] == ["repli"]
-    finally:
-        ai.net.post_json = real_post
-        ai._tier_down.clear()
-        db.run("DELETE FROM ai_cache")
-        _restore_ai(saved)
-
 def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
     """The subscription must never carry bulk work, and must not break anything."""
     saved = {k: getattr(config, k) for k in settings.FIELDS}
@@ -1456,7 +1422,7 @@ def test_crawler_page_never_calls_a_refused_site_active():
     import app
     html = app.app.test_client().get("/crawler").get_data(as_text=True)
     top = html[:html.index("Sites qui refusent")] if "Sites qui refusent" in html else html
-    for dom in ("www.leboncoin.fr", "www.autoscout24.ch"):
+    for dom in ("www.leboncoin.fr",):
         i = top.find(dom)
         assert i > 0, f"{dom} missing from the domain table"
         row = top[i:i + 900]
@@ -1469,93 +1435,6 @@ def test_crawler_page_never_calls_a_refused_site_active():
 
 
 # --- eBay ------------------------------------------------------------------
-
-def test_ebay_is_an_api_not_a_crawl():
-    """eBay must never go through the crawler: it publishes an endpoint."""
-    import ast, inspect
-    # parse the imports rather than grep the text: the docstring says the word
-    # "crawler" precisely to explain why it is not used
-    tree = ast.parse(inspect.getsource(ebay))
-    imported = set()
-    for n in ast.walk(tree):
-        if isinstance(n, ast.Import):
-            imported |= {a.name.split(".")[0] for a in n.names}
-        elif isinstance(n, ast.ImportFrom) and n.module:
-            imported.add(n.module.split(".")[0])
-    assert "crawler" not in imported, f"eBay should not touch the crawl layer: {imported}"
-    assert "api.ebay.com" in inspect.getsource(ebay)
-    # and the crawl audit page must not claim eBay as a crawled domain
-    import app
-    html = app.app.test_client().get("/crawler").get_data(as_text=True)
-    top = html[:html.index("Sites qui refusent")] if "Sites qui refusent" in html else html
-    assert "ebay" not in top.lower(), "eBay listed as a crawled domain"
-
-def test_ebay_degrades_without_credentials():
-    """No keys must mean an empty list and a clear reason, never a crash."""
-    saved = (config.EBAY_CLIENT_ID, config.EBAY_CLIENT_SECRET)
-    try:
-        config.EBAY_CLIENT_ID = config.EBAY_CLIENT_SECRET = ""
-        ebay._token.update(value=None, expires=0)
-        assert ebay.configured() is False
-        assert ebay.search("iphone") == [], "searched eBay with no credentials"
-        assert sources.ADAPTERS["ebay"]("iphone") == []
-        st, why = sources.LAST_STATUS.get("ebay", ("", ""))
-        assert st == "login" and "identifiants" in why, (st, why)
-        ok, msg = ebay.probe()
-        assert not ok and "developer.ebay.com" in msg, msg
-    finally:
-        config.EBAY_CLIENT_ID, config.EBAY_CLIENT_SECRET = saved
-        ebay._token.update(value=None, expires=0)
-
-def test_ebay_parses_a_real_response_shape():
-    """Field names come from eBay's docs; a rename must fail loudly here."""
-    payload = {"itemSummaries": [{
-        "itemId": "v1|3061|0", "title": "Salomon QST 99 skis 181cm",
-        "itemWebUrl": "https://www.ebay.ch/itm/3061",
-        "price": {"value": "245.50", "currency": "CHF"},
-        "condition": "Used",
-        "buyingOptions": ["FIXED_PRICE"],
-        "itemLocation": {"city": "Sion", "postalCode": "1950", "country": "CH"},
-        "seller": {"username": "ski_vs", "feedbackScore": 88,
-                   "feedbackPercentage": "99.4"},
-        "shippingOptions": [{"shippingCost": {"value": "9.70", "currency": "CHF"}}],
-        "image": {"imageUrl": "https://i.ebayimg.com/a.jpg"},
-        "thumbnailImages": [{"imageUrl": "https://i.ebayimg.com/b.jpg"}],
-        "itemCreationDate": "2026-08-19T07:45:00.000Z"}]}
-
-    class R:
-        status_code = 200
-        def json(self):
-            return payload
-    real_get, real_token = ebay.net.get, ebay.token
-    try:
-        ebay.token = lambda force=False: "tok"
-        ebay.net.get = lambda *a, **k: R()
-        rows = ebay.search("salomon qst 99")
-    finally:
-        ebay.net.get, ebay.token = real_get, real_token
-
-    assert len(rows) == 1
-    r = rows[0]
-    assert r["price"] == 245.50 and r["currency"] == "CHF"
-    assert r["source"] == "ebay" and r["price_type"] == "fixed"
-    assert r["postal_code"] == "1950" and r["location_raw"] == "Sion"
-    assert r["shipping"] == 1 and r["shipping_cost"] == 9.70
-    assert r["seller_name"] == "ski_vs"
-    assert len(json.loads(r["images"])) == 2
-    assert r["posted_at"] and r["posted_at"] > 1_700_000_000
-    assert r["auction_end"] is None and r["bids"] is None, "fixed price is not an auction"
-    # and it must survive the shared insert path
-    db.run("DELETE FROM listings WHERE url=?", (r["url"],))
-    lid, new = engine.upsert_listing(r)
-    assert new and db.q("SELECT price FROM listings WHERE id=?", (lid,),
-                        one=True)["price"] == 245.50
-    db.run("DELETE FROM listings WHERE id=?", (lid,))
-
-def test_ebay_only_asks_for_used_items():
-    f = ebay._filters({"price_min": 100, "price_max": 500})
-    assert "conditions:{USED" in f, "new items would flood a second-hand monitor"
-    assert "price:[100..500]" in f and "priceCurrency:CHF" in f, f
 
 def test_interrupted_scan_does_not_leave_matches_provisional():
     """Phase 1 rows must not survive as "analyse en cours…" for ever.
@@ -1689,7 +1568,8 @@ def test_bulk_work_can_never_be_put_on_the_subscription():
     finally:
         config.JOB_ROUTES = saved
 
-def test_job_route_picks_the_account_and_model():
+def test_job_route_picks_the_model():
+    """A job pinned to a model must use that one, not the account default."""
     saved = (getattr(config, "JOB_ROUTES", {}), config.AI_FALLBACKS)
     seen = {}
     real_post = ai.net.post_json
@@ -1698,18 +1578,20 @@ def test_job_route_picks_the_account_and_model():
         def json(self):
             return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
     def fake(url, body, headers=None, timeout=None):
-        seen["url"], seen["model"] = url, body.get("model")
+        seen["model"] = body.get("model")
         return R()
     try:
-        config.JOB_ROUTES = {"traduction": {"account": "repli", "model": "mon-modele"}}
-        config.ALT_PROVIDER, config.ALT_BASE_URL = "openrouter", "https://repli/v1"
-        config.ALT_API_KEY, config.ALT_MODEL = "k2", "defaut-repli"
+        config.JOB_ROUTES = {"traduction": {"account": "principal", "model": "mon-modele"}}
         ai.net.post_json = fake
         ai._tier_down.clear()
         db.run("DELETE FROM ai_cache")
         ai.chat("s", "u", job="traduction")
-        assert "repli" in seen["url"], f"went to {seen['url']} instead of the chosen account"
         assert seen["model"] == "mon-modele", seen["model"]
+        # and with no model pinned, the account default is used
+        config.JOB_ROUTES = {}
+        db.run("DELETE FROM ai_cache")
+        ai.chat("s", "u", job="traduction")
+        assert seen["model"] == config.AI_FALLBACKS[0], seen["model"]
     finally:
         ai.net.post_json = real_post
         db.run("DELETE FROM ai_cache")
@@ -1731,8 +1613,10 @@ def test_subscription_calls_do_not_eat_the_api_budget():
 def test_settings_page_shows_what_each_job_really_uses():
     import app
     html = app.app.test_client().get("/reglages").get_data(as_text=True)
+    from markupsafe import escape as _esc
     for job, meta in config.JOBS.items():
-        assert meta["label"] in html, f"{job} missing from the panel"
+        # Jinja escapes quotes too: "Entretien de l'assistant" -> &#39;
+        assert str(_esc(meta["label"])) in html, f"{job} missing from the panel"
         assert f'name="acct_{job}"' in html and f'name="model_{job}"' in html
     # the subscription must not even be offered for bulk work
     i = html.index('name="acct_tri"')

@@ -14,17 +14,14 @@ import db, config
 # Ce que la page de réglages possède. Le reste reste dans config.py.
 FIELDS = ("AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY",
           "SMART_MODEL", "SMART_BUDGET_USD",
-          # compte de repli, utilisé quand le principal n'a plus de jetons
-          "ALT_PROVIDER", "ALT_BASE_URL", "ALT_MODEL", "ALT_API_KEY",
           # abonnement Claude Code, entretien de l'assistant uniquement
           "CLAUDE_CLI", "CLAUDE_CLI_MODEL",
           # eBay : API officielle, pas du crawl
-          "EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "EBAY_MARKETPLACE",
           # alertes e-mail : la voie légitime vers leboncoin & les Scout24
           "IMAP_HOST", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD", "IMAP_FOLDER",
           # qui fait quoi et qui paie : un JSON, pas six champs
           "JOB_ROUTES")
-SECRET = ("AI_API_KEY", "ALT_API_KEY", "EBAY_CLIENT_SECRET", "IMAP_PASSWORD")
+SECRET = ("AI_API_KEY", "IMAP_PASSWORD")
 
 def stored():
     return {r["k"]: r["v"] for r in db.q("SELECT k,v FROM settings")}
@@ -99,15 +96,8 @@ def current():
             "SMART_MODEL": config.SMART_MODEL,
             "SMART_BUDGET_USD": config.SMART_BUDGET_USD,
             "AI_API_KEY": masked(config.AI_API_KEY),
-            "ALT_PROVIDER": config.ALT_PROVIDER,
-            "ALT_BASE_URL": config.ALT_BASE_URL,
-            "ALT_MODEL": config.ALT_MODEL,
-            "ALT_API_KEY": masked(config.ALT_API_KEY),
             "CLAUDE_CLI": config.CLAUDE_CLI,
             "CLAUDE_CLI_MODEL": config.CLAUDE_CLI_MODEL,
-            "EBAY_CLIENT_ID": config.EBAY_CLIENT_ID,
-            "EBAY_CLIENT_SECRET": masked(config.EBAY_CLIENT_SECRET),
-            "EBAY_MARKETPLACE": config.EBAY_MARKETPLACE,
             "IMAP_HOST": config.IMAP_HOST, "IMAP_PORT": config.IMAP_PORT,
             "IMAP_USER": config.IMAP_USER, "IMAP_FOLDER": config.IMAP_FOLDER,
             "IMAP_PASSWORD": masked(config.IMAP_PASSWORD),
@@ -157,13 +147,6 @@ def connect(which, key=""):
     if which == "mail":
         import mailbox
         return mailbox.probe()
-    if which == "ebay":
-        import ebay
-        if key:                       # « App ID:Cert ID » collés d'un bloc
-            cid, _, sec = key.partition(":")
-            save({"EBAY_CLIENT_ID": cid.strip(), "EBAY_CLIENT_SECRET": sec.strip()})
-        ebay._token.update(value=None, expires=0)
-        return ebay.probe()
     if which not in config.PROVIDERS:
         return False, "Service inconnu."
     base, model = config.PROVIDERS[which]
@@ -198,7 +181,6 @@ def demo():
     assert "abcdefghijklmnop" not in masked("sk-or-v1-abcdefghijklmnop")
     assert masked("") == "" and masked("short") == "définie"
     assert _coerce("AI_BASE_URL", " https://x/v1/ ") == "https://x/v1"
-    assert _coerce("ALT_BASE_URL", "https://y/v1/") == "https://y/v1"
     assert _coerce("SMART_BUDGET_USD", "12,5") == 12.5
     assert _coerce("SMART_BUDGET_USD", "abc") is None
     assert _coerce("CLAUDE_CLI", "1") is True and _coerce("CLAUDE_CLI", "0") is False

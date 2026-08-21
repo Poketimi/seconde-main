@@ -5,6 +5,15 @@ utiliser <b>ton propre compte</b> — Anthropic, OpenAI, DeepSeek, un modèle lo
 c'est ton fournisseur qui te facture, sans intermédiaire. Rien ici n'exige de
 redémarrer : le changement s'applique à la requête suivante.</p>
 
+<div class="strip">
+  <span class="label">Aussi ici</span>
+  <a class="chip" href="{{ url_for('connexions') }}">Connexions</a>
+  <a class="chip" href="{{ url_for('sources_page') }}">Sources</a>
+  <a class="chip" href="{{ url_for('profil') }}">Mes données</a>
+  <a class="chip" href="{{ url_for('crawler_page') }}">Crawler</a>
+  <a class="chip" href="{{ url_for('compte') }}">Mot de passe</a>
+</div>
+
 <h2>Brancher un service</h2>
 {% if found %}
 <div class="connect">
@@ -24,21 +33,11 @@ redémarrer : le changement s'applique à la requête suivante.</p>
     <input type="hidden" name="which" value="mail">
     <div class="ctitle">Alertes e-mail
       {% if mail_ok %}<span class="pill ok"><i class="dot"></i>branché</span>{% endif %}</div>
-    <p class="faint">La voie vers <b>leboncoin</b> et les Scout24 : leurs propres alertes,
-      lues dans ta boîte. Réglages IMAP plus bas.</p>
+    <p class="faint">La voie vers <b>leboncoin</b> : ses propres alertes, lues dans ta
+      boîte. Réglages IMAP plus bas.</p>
     <button>Tester la lecture</button>
   </form>
 
-  <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard {{ 'here' if ebay_ok }}">
-    <input type="hidden" name="which" value="ebay">
-    <div class="ctitle">eBay
-      {% if ebay_ok %}<span class="pill ok"><i class="dot"></i>branché</span>{% endif %}</div>
-    <p class="faint">API officielle, gratuite, 5000 requêtes/jour. Colle
-      <code>AppID:CertID</code> d'un bloc.</p>
-    <input name="key" type="password" autocomplete="off" placeholder="AppID:CertID">
-    <a class="chip" href="https://developer.ebay.com/my/keys" target="_blank" rel="noopener">obtenir des clés ↗</a>
-    <button>Brancher et tester</button>
-  </form>
   {% for p, meta in info.items() %}
   <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard">
     <input type="hidden" name="which" value="{{ p }}">
@@ -90,29 +89,22 @@ redémarrer : le changement s'applique à la requête suivante.</p>
       <input name="AI_API_KEY" type="password" autocomplete="off"
              placeholder="{{ cur.AI_API_KEY or 'sk-…' }} — laisser vide pour garder l'actuelle">
     </label>
-    <p class="faint">Elle est enregistrée en clair dans <code>data/market.db</code>, sur
-      cette machine, comme l'était <code>.env</code>. La page ne la réaffiche jamais.</p>
+    <label>Modèle par défaut du compte
+      <input name="AI_MODEL" value="{{ cur.AI_MODEL }}" list="models" autocomplete="off"></label>
+    <datalist id="models"></datalist>
+    <p class="faint" id="modelnote">Chargement de la liste des modèles disponibles…</p>
+    <p class="faint">Clé enregistrée en clair dans <code>data/market.db</code>, sur cette
+      machine, comme l'était <code>.env</code>. La page ne la réaffiche jamais. Le modèle
+      par travail se règle dans le tableau ci-dessous.</p>
   </fieldset>
 
   <fieldset>
-    <legend>Modèles</legend>
-    <label>Tri des annonces <span class="faint">— appelé des centaines de fois par jour,
-        prends-le petit et rapide</span>
-      <input name="AI_MODEL" value="{{ cur.AI_MODEL }}" list="models" autocomplete="off">
-    </label>
-    <label>Entretien de l'assistant <span class="faint">— 2 appels par nouvelle recherche,
-        c'est là qu'un bon modèle change le résultat</span>
-      <input name="SMART_MODEL" value="{{ cur.SMART_MODEL }}" list="models" autocomplete="off">
-    </label>
-    <datalist id="models"></datalist>
-    <p class="faint" id="modelnote">Chargement de la liste des modèles disponibles…</p>
-    <label>Plafond annuel du modèle d'entretien ($)
+    <legend>Plafond</legend>
+    <label>Plafond annuel des clés d'API ($)
       <input name="SMART_BUDGET_USD" value="{{ '%.2f'|format(cur.SMART_BUDGET_USD) }}"
-             inputmode="decimal" style="max-width:9rem">
-    </label>
-    <p class="faint">Au-delà, l'entretien retombe sur le modèle bon marché au lieu de
-      s'arrêter. Un modèle absent de la table de prix est estimé au tarif le plus cher,
-      pour qu'il compte quand même contre le plafond.</p>
+             inputmode="decimal" style="max-width:9rem"></label>
+    <p class="faint">Au-delà, les appels payants retombent sur le modèle bon marché au lieu
+      de s'arrêter. Ce qui passe par l'abonnement ne compte pas dedans.</p>
   </fieldset>
 
   <fieldset>
@@ -157,11 +149,11 @@ redémarrer : le changement s'applique à la requête suivante.</p>
   </fieldset>
 
   <fieldset>
-    <legend>Alertes e-mail <span class="faint">— leboncoin, autoscout24, motoscout24, immoscout24</span></legend>
-    <p class="faint">Ces sites <b>interdisent le crawl</b> et ce refus tient. Mais ils
-      envoient volontiers leurs propres alertes : enregistre la recherche <b>chez eux</b>,
+    <legend>Alertes e-mail <span class="faint">— leboncoin</span></legend>
+    <p class="faint">leboncoin <b>interdit le crawl</b> et ce refus tient. Mais ils
+      envoie volontiers ses propres alertes : enregistre la recherche <b>chez eux</b>,
       active la notification par e-mail, et l'app lit ces messages dans ta boîte. Aucune
-      requête ne part vers ces sites — c'est eux qui envoient.</p>
+      requête ne part vers leboncoin — c'est lui qui envoie.</p>
     <p class="faint"><b>Mot de passe d'application uniquement</b>, jamais celui de ton
       compte : Gmail, iCloud et Proton en génèrent un dédié, révocable seul. L'accès est en
       <b>lecture seule</b> — rien n'est marqué lu, déplacé ni supprimé.</p>
@@ -179,28 +171,6 @@ redémarrer : le changement s'applique à la requête suivante.</p>
              placeholder="{{ cur.IMAP_PASSWORD or '····' }} — vide = on garde l'actuel"></label>
     <label>Dossier <span class="faint">— un libellé dédié évite de parcourir toute la boîte</span>
       <input name="IMAP_FOLDER" value="{{ cur.IMAP_FOLDER }}" placeholder="INBOX"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>eBay <span class="faint">— API officielle, pas du crawl</span></legend>
-    <p class="faint">eBay refuse ce robot sur ses pages web, et publie une API pour ça :
-      compte développeur gratuit, <b>5000 requêtes/jour</b>, soit très largement au-dessus
-      de ce que l'app consomme. Crée des clés <b>Production</b> (pas Sandbox) sur
-      <a href="https://developer.ebay.com/my/keys" target="_blank" rel="noopener">developer.ebay.com/my/keys</a>.</p>
-    <label>App ID <span class="faint">— « Client ID »</span>
-      <input name="EBAY_CLIENT_ID" value="{{ cur.EBAY_CLIENT_ID }}" autocomplete="off"></label>
-    <label>Cert ID <span class="faint">— « Client Secret »</span>
-      <input name="EBAY_CLIENT_SECRET" type="password" autocomplete="off"
-             placeholder="{{ cur.EBAY_CLIENT_SECRET or 'PRD-…' }} — vide = on garde l'actuel"></label>
-    <label>Marché
-      <select name="EBAY_MARKETPLACE">
-        {% for m in ('EBAY_CH','EBAY_DE','EBAY_FR','EBAY_IT','EBAY_GB','EBAY_US') %}
-          <option value="{{ m }}" {{ 'selected' if m == cur.EBAY_MARKETPLACE }}>{{ m }}</option>
-        {% endfor %}
-      </select></label>
-    <p class="faint">Le filtre « livrable en Suisse » est appliqué d'office, ce qui rend
-      EBAY_DE et EBAY_FR utiles aussi : bien plus de volume, et seul ce qui t'arrive
-      réellement remonte. Seules les annonces d'<b>occasion</b> sont demandées.</p>
   </fieldset>
 
   <fieldset>
@@ -225,32 +195,6 @@ redémarrer : le changement s'applique à la requête suivante.</p>
     {% endif %}
   </fieldset>
 
-  <fieldset>
-    <legend>Compte de repli <span class="faint">— facultatif</span></legend>
-    <p class="faint">Quand le compte principal n'a plus de jetons, l'app bascule ici toute
-      seule et continue, au lieu de retomber sur le tri par mots-clés. Le compte épuisé est
-      mis de côté un quart d'heure puis retenté. Seul OpenRouter publie son solde : pour les
-      autres, la bascule se déclenche au premier appel refusé (401 / 402 / 429).</p>
-    <label>Service
-      <select name="ALT_PROVIDER">
-        <option value="" {{ 'selected' if not cur.ALT_PROVIDER }}>aucun</option>
-        {% for p in providers %}
-        <option value="{{ p }}" {{ 'selected' if p == cur.ALT_PROVIDER }}>{{ p }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Adresse de l'API
-      <input name="ALT_BASE_URL" value="{{ cur.ALT_BASE_URL }}" placeholder="https://…/v1">
-    </label>
-    <label>Modèle
-      <input name="ALT_MODEL" value="{{ cur.ALT_MODEL }}" autocomplete="off">
-    </label>
-    <label>Clé
-      <input name="ALT_API_KEY" type="password" autocomplete="off"
-             placeholder="{{ cur.ALT_API_KEY or 'sk-…' }} — laisser vide pour garder l'actuelle">
-    </label>
-  </fieldset>
-
   <div class="row">
     <button class="cta" type="submit">Enregistrer</button>
     <button type="submit" name="probe" value="1">Enregistrer et tester</button>
@@ -262,15 +206,6 @@ redémarrer : le changement s'applique à la requête suivante.</p>
   <span class="pill {{ 'ok' if session.get('user') else 'empty' }}"><i class="dot"></i>
     {{ 'connecté : ' + session['user'] if session.get('user') else 'ouverte, sans mot de passe' }}</span>
   <a class="chip" href="{{ url_for('compte') }}">gérer le compte →</a>
-</div>
-
-<h2>Comptes IA</h2>
-<div class="strip">
-  {% for t in tiers %}
-    <span class="pill {{ 'ok' if t.live else 'blocked' }}"><i class="dot"></i>
-      {{ t.name }} · {{ t.provider }} · {{ t.model }}
-      {%- if not t.live %} — en pause {{ (t.retry_in / 60)|round|int }} min{% endif %}</span>
-  {% endfor %}
 </div>
 
 <h2>Dépense</h2>

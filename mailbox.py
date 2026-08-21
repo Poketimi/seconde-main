@@ -9,8 +9,8 @@ C'est la même donnée, obtenue à l'envers : ce n'est plus nous qui allons la
 chercher, c'est le site qui l'envoie, à sa cadence et de son plein gré. Aucun
 robots.txt n'entre en jeu, aucune requête ne part vers leboncoin.
 
-Ça marche pour tous les sites qui refusent ce crawler et proposent des alertes :
-leboncoin, autoscout24, motoscout24, immoscout24.
+Aujourd'hui : leboncoin. Tout site qui refuse le crawl et propose des alertes
+s'ajoute en une entrée dans SITES.
 
 ACCÈS : IMAP en LECTURE SEULE, sur un mot de passe d'application dédié (Gmail,
 iCloud, Proton...) — jamais le mot de passe principal du compte. Rien n'est
@@ -24,13 +24,8 @@ import config, db
 SITES = {
     "leboncoin":   {"from": ("leboncoin.fr",),
                     "link": r"https?://(?:www\.)?leboncoin\.fr/(?:ad|vi)/[\w/-]*?(\d{6,})"},
-    "autoscout24": {"from": ("autoscout24.ch",),
-                    "link": r"https?://(?:www\.)?autoscout24\.ch/[\w/-]*?(\d{6,})"},
-    "motoscout24": {"from": ("motoscout24.ch",),
-                    "link": r"https?://(?:www\.)?motoscout24\.ch/[\w/-]*?(\d{6,})"},
-    "immoscout24": {"from": ("immoscout24.ch",),
-                    "link": r"https?://(?:www\.)?immoscout24\.ch/[\w/-]*?(\d{6,})"},
 }
+
 # Les séparateurs de milliers ne valent que par groupes de trois. Sans cette
 # contrainte, « Cannondale CAAD13 1 250 € » se lisait comme un seul nombre :
 # 131250 — même famille de bug que le vélo à 2100 CHF enregistré à 2.00.
@@ -215,7 +210,6 @@ def demo():
     assert b["price"] == 6900.0
     assert parse("leboncoin", "") == [] and parse("inconnu", html) == []
     assert site_of("alerte@leboncoin.fr") == "leboncoin"
-    assert site_of("noreply@autoscout24.ch") == "autoscout24"
     assert site_of("spam@example.com") is None
     # sans prix affiché, ne rien inventer
     solo = parse("leboncoin", '<a href="https://www.leboncoin.fr/ad/x/2891234567">Titre seul</a>')
