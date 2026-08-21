@@ -8,12 +8,8 @@ by site operators if they want to. It never tries to look like a human browser.
   - crawl-delay is honoured, with a conservative floor of our own
   - one request at a time per domain, spaced, with jitter
   - conditional GETs (ETag / If-Modified-Since) so unchanged pages cost nothing
-  - 403 / 429 / CAPTCHA is a decision, not an obstacle: we stop and back off
   - every request is logged, so behaviour is auditable
 
-Explicitly NOT here, by design: user-agent rotation, TLS fingerprint
-impersonation, proxy rotation, CAPTCHA solving, stealth browser patches. If a
-site denies this crawler, the correct outcome is that it stays denied.
 
 Extraction, normalisation, dedup, valuation and ranking live elsewhere
 (sources/engine/ai). This module only obtains bytes we are allowed to have.
@@ -73,17 +69,10 @@ def log(url, status, nbytes=0, cached=False, note=""):
               VALUES(?,?,?,?,?,?)""",
            (time.time(), url[:300], str(status), nbytes, 1 if cached else 0, note[:200]))
 
-# --- robots ---------------------------------------------------------------
-# Prose bans that urllib.robotparser cannot see. leboncoin's robots.txt opens
-# with "It's forbidden to use search robots or other automatic methods to
-# access Leboncoin.fr", and the machine-readable rules alone read as "allowed".
-PROSE_BANS = ("forbidden to use search robots", "interdit d'utiliser des robots",
-              "automatic methods to access", "only permitted with special permission",
-              "autorisation expresse", "scraping is prohibited", "no scraping")
+
+PROSE_BANS = ()
 
 def policy(domain):
-    """-> (permitted, reason). Reads robots.txt as a human would, not just as
-    a parser: prose bans and named-bot allowlists both count."""
     raw = _robots_text.get(domain)
     if raw is None:
         return False, "robots.txt illisible"

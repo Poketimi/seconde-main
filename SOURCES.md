@@ -158,7 +158,38 @@ python3 test_core.py         # la suite complète, sans réseau
 Puis dans l'app : page **Sources** → *Vérifier* lance l'adaptateur pour de vrai
 et écrit le verdict.
 
-## 7. Les pièges déjà rencontrés
+## 7. Cas concret : remplacer une source par un client d'API
+
+Si tu écris un client leboncoin, quatre points de contact — et rien d'autre :
+
+1. **`sources/leboncoin.py`** avec `@adapter("leboncoin")`. Ne passe pas par
+   `crawler.py` : un point d'accès prévu pour être appelé n'a pas de
+   `robots.txt` qui tienne.
+2. **`sources/__init__.py`** : ajoute `from .leboncoin import leboncoin`, sinon
+   le module n'est jamais chargé et l'adaptateur ne s'inscrit pas.
+3. **Collision de nom.** `sources/mail.py` inscrit déjà `leboncoin` à partir de
+   `mailbox.SITES`. Deux adaptateurs ne peuvent pas porter le même nom : soit
+   tu retires l'entrée de `mailbox.SITES`, soit tu renommes l'une des deux.
+   L'ordre d'import décide sinon en silence, ce qui est pire.
+4. **`DENIED_BY_OPERATOR`** (dans `sources/mail.py`) contient `leboncoin`, et
+   `sources.demo()` vérifie qu'un site refusé n'a qu'un adaptateur e-mail.
+   Retire l'entrée si tu as une voie autorisée — sinon l'auto-vérification
+   échoue, et la page Crawler continue d'affirmer que le site n'est jamais
+   contacté alors que c'est faux.
+
+**Les origines se convertissent en rayon.** L'app raisonne en minutes, la
+plupart des API en mètres. Utilise les mêmes constantes que le préfiltre
+distance pour que le rayon demandé corresponde à ce que le filtre gardera :
+
+```python
+km = o["max_minutes"] / 60 * config.MODE_SPEED_KMH[mode] / config.DETOUR_FACTOR[mode]
+```
+
+Vise large plutôt qu'étroit : le filtre exact (`engine.distance_ok`) repasse
+derrière et écarte ce qui dépasse. Trop étroit, tu perds des annonces sans
+jamais le savoir.
+
+## 8. Les pièges déjà rencontrés
 
 - **Séparateurs de milliers.** `2 100 CHF` avec une espace insécable ou une
   apostrophe typographique s'est enregistré en `2.00`. Réutilise `sources._num`.
