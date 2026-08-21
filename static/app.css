@@ -369,3 +369,12 @@ select.lang.more{min-height:0;padding:.2rem 1.7rem .2rem .6rem;font-size:.78rem;
   .detail{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:1.6rem;
     align-items:start}
 }
+
+/* ---- barre de progression ---- */
+#prog{position:fixed;top:0;left:0;right:0;height:2px;z-index:60;pointer-events:none;
+  background:transparent}
+#prog[hidden]{display:none}
+#prog i{display:block;height:100%;width:0;background:var(--acc);
+  transition:width .35s ease-out;box-shadow:0 0 8px var(--acc)}
+@media(prefers-reduced-motion:reduce){#prog i{transition:none}}
+button[data-busy]{opacity:.6}

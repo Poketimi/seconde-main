@@ -19,6 +19,7 @@ from .match import *      # noqa: F401,F403
 from .store import *      # noqa: F401,F403
 from .health import *     # noqa: F401,F403
 from .scan import *       # noqa: F401,F403
+from .scan import fb_backfill                          # noqa: F401
 from .checks import *     # noqa: F401,F403
 from .match import _norm, _number_belongs_to           # noqa: F401
 from .health import forget_stale_verdicts, BACKOFF_STATUSES           # noqa: F401

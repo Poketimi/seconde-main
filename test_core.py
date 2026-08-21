@@ -1799,6 +1799,54 @@ def test_facebook_description_is_taken_from_the_item_page():
     assert 'l["title"]' in isrc and "_d.lower()" in isrc, \
         "le titre recopié serait enregistré comme description"
 
+def test_facebook_backfill_is_paced_and_does_not_repeat_itself():
+    """237 vues d'un coup, c'est le motif qui fait restreindre un compte."""
+    import inspect
+    src = inspect.getsource(engine.fb_backfill)
+    assert "time.sleep(delay)" in src, "les vues ne sont pas espacées"
+    assert "LIMIT ?" in src, "aucune limite par cycle"
+    assert "status='active'" in src, "on ouvrirait des annonces disparues"
+    assert config.FB_BACKFILL_PER_CYCLE <= 10, "cadence trop agressive"
+    assert config.FB_BACKFILL_DELAY >= 5
+
+    # une annonce sans description doit être marquée, sinon elle revient à
+    # chaque cycle et on rouvre sa page indéfiniment
+    db.run("DELETE FROM listings WHERE url='https://fb/bf'")
+    lid = db.run("INSERT INTO listings(url,source,title,status,last_seen)"
+                 " VALUES(?,?,?,'active',?)",
+                 ("https://fb/bf", "fb_marketplace", "Vélo", time.time()))
+    real_det, real_avail = sources.fb_item_details, engine.browser.available
+    try:
+        engine.browser.available = lambda: True
+        sources.fb_item_details = lambda u: {"description": "Vélo"}   # = le titre
+        engine.fb_backfill(limit=1, delay=0)
+        got = db.q("SELECT description FROM listings WHERE id=?", (lid,), one=True)
+        assert got["description"] == "", "le titre a été enregistré comme description"
+
+        sources.fb_item_details = lambda u: {"description": "Peu servi, révisé."}
+        db.run("UPDATE listings SET description=NULL WHERE id=?", (lid,))
+        assert engine.fb_backfill(limit=1, delay=0) == 1
+        got = db.q("SELECT description, ai_enriched FROM listings WHERE id=?", (lid,), one=True)
+        assert got["description"] == "Peu servi, révisé."
+        assert got["ai_enriched"] == 0, "le tri doit reconsidérer l'annonce"
+    finally:
+        sources.fb_item_details = real_det
+        engine.browser.available = real_avail
+        db.run("DELETE FROM listings WHERE id=?", (lid,))
+
+def test_settings_page_does_not_shell_out_on_every_render():
+    """`claude auth status` coûte ~350 ms : /reglages mettait 1,3 s à s'afficher."""
+    calls = []
+    real = ai.client.subprocess.run
+    ai.client._auth_cache.update(at=0.0, val=None)
+    ai.client.subprocess.run = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
+    try:
+        ai.cli_auth(); ai.cli_auth(); ai.cli_auth()
+    finally:
+        ai.client.subprocess.run = real
+    assert len(calls) <= 1, f"{len(calls)} processus lancés au lieu d'un"
+    assert ai.client.AUTH_TTL >= 30
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -187,6 +187,13 @@ BROWSER_TARGETS_PER_CYCLE = int(os.environ.get("BROWSER_TARGETS_PER_CYCLE", 2))
 
 GONE_AFTER_HOURS = float(os.environ.get("GONE_AFTER_HOURS", 48))
 
+# Les résultats de recherche facebook ne portent pas la description : elle est
+# sur la page de l'annonce. Rattraper les anciennes se fait donc au compte-
+# gouttes — un paquet de 237 vues d'un coup est exactement ce qui fait
+# restreindre un compte. 5 par cycle = ~4 h pour 40 annonces, invisible.
+FB_BACKFILL_PER_CYCLE = int(os.environ.get("FB_BACKFILL_PER_CYCLE", 5))
+FB_BACKFILL_DELAY = float(os.environ.get("FB_BACKFILL_DELAY", 20))
+
 # --- assisted search ---------------------------------------------------
 # A genuinely capable model, used ONLY to run the interview: twice per new
 # search (generate questions, turn answers into criteria). It never sees a

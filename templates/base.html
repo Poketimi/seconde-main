@@ -50,8 +50,54 @@
 {% block body %}{% endblock %}
 </main>
 
+<div id="prog" hidden><i></i></div>
+
 <div id="livebar" hidden><span class="spin"></span><span id="livetext"></span></div>
 <script>
+// Retour immédiat au clic : les pages sont rendues côté serveur, donc entre le
+// clic et le premier octet il ne se passait rien à l'écran. Une barre fine
+// suffit — elle démarre tout de suite et se termine quand la page part.
+(function () {
+  const bar = document.getElementById('prog');
+  let t = null;
+  function start() {
+    if (t) return;
+    bar.hidden = false;
+    bar.firstElementChild.style.width = '0%';
+    requestAnimationFrame(() => bar.firstElementChild.style.width = '70%');
+    // Si rien n'a bougé après 12 s, ne pas laisser une barre figée à l'écran.
+    t = setTimeout(stop, 12000);
+  }
+  function stop() {
+    clearTimeout(t); t = null;
+    bar.firstElementChild.style.width = '100%';
+    setTimeout(() => { bar.hidden = true; }, 220);
+  }
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a[href]');
+    if (!a || a.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const href = a.getAttribute('href') || '';
+    if (href.startsWith('#') || href.startsWith('mailto:')) return;
+    if (new URL(a.href, location.href).origin !== location.origin) return;
+    start();
+  });
+  document.addEventListener('submit', e => {
+    start();
+    // Un second clic renverrait le formulaire : désactiver le bouton, mais
+    // seulement après l'envoi, sinon sa valeur ne part pas.
+    const b = e.target.querySelector('button:not([type=button])');
+    if (b) setTimeout(() => { b.disabled = true; b.dataset.busy = '1'; }, 0);
+  });
+  // Retour arrière depuis le cache : la page est déjà là, rien à attendre.
+  window.addEventListener('pageshow', () => {
+    stop();
+    document.querySelectorAll('button[data-busy]').forEach(b => {
+      b.disabled = false; delete b.dataset.busy;
+    });
+  });
+  window.addEventListener('beforeunload', start);
+})();
+
 // Poll a tiny fingerprint and reload only when it changes, so a finished scan
 // or a completed login appears without touching the keyboard.
 (function () {

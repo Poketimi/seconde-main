@@ -30,26 +30,44 @@ def _slug(*parts):
 
 CLI_TIMEOUT = 180
 
+_which_cache = []
+
 def cli_available():
-    return bool(shutil.which("claude"))
+    """shutil.which parcourt le PATH ; tiers() l'appelle à chaque requête."""
+    if not _which_cache:
+        _which_cache.append(bool(shutil.which("claude")))
+    return _which_cache[0]
 
 CLI_LOGIN = {"running": False, "message": "", "started": 0.0}
 
-def cli_auth():
+# `claude auth status` lance un processus : ~350 ms, et /reglages l'appelait
+# deux fois par rendu — d'où une page à 1,3 s pour de l'information qui ne
+# change qu'à la connexion.
+_auth_cache = {"at": 0.0, "val": None}
+AUTH_TTL = 60
+
+def cli_auth(max_age=AUTH_TTL):
     """État de la session `claude` : {loggedIn, authMethod, ...} ou None.
 
     C'est `claude auth status`, qui répond déjà en JSON. Rien n'est lu dans le
     trousseau : on demande au binaire, il répond ce qu'il veut bien dire.
+    Le résultat est gardé une minute ; `cli_login` l'invalide pour que la page
+    Connexions bascule dès que la connexion aboutit.
     """
+    if max_age and time.time() - _auth_cache["at"] < max_age:
+        return _auth_cache["val"]
     exe = shutil.which("claude")
     if not exe:
+        _auth_cache.update(at=time.time(), val=None)
         return None
     try:
         r = subprocess.run([exe, "auth", "status"], capture_output=True,
                            text=True, timeout=20)
-        return json.loads(r.stdout)
+        val = json.loads(r.stdout)
     except Exception:
-        return None
+        val = None
+    _auth_cache.update(at=time.time(), val=val)
+    return val
 
 def cli_login():
     """Ouvre une fenêtre Terminal sur `claude auth login`.
@@ -78,6 +96,7 @@ def cli_login():
         CLI_LOGIN.update(running=False, message=f"impossible d'ouvrir Terminal : {e}")
         return False
     _tier_down.pop("abonnement", None)      # on retente dès que la session revient
+    _auth_cache.update(at=0.0, val=None)    # la page doit voir la nouvelle session
     CLI_LOGIN.update(running=True, started=time.time(),
                      message="fenêtre Terminal ouverte — connecte-toi puis reviens ici")
     return True
@@ -86,7 +105,7 @@ def cli_login_done():
     """Appelé par le sondage : la fenêtre a-t-elle abouti ?"""
     if not CLI_LOGIN["running"]:
         return False
-    st = cli_auth() or {}
+    st = cli_auth(max_age=0) or {}
     if st.get("loggedIn"):
         CLI_LOGIN.update(running=False, message="connecté")
         return True

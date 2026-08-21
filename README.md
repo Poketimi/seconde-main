@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 86 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 88 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -110,6 +110,12 @@ python3 browser.py check                              # état des sessions
 Les cookies restent dans `data/browser-profile/` (jamais commité). Les scans tournent en
 headless — une fenêtre visible volait le focus du Mac à chaque cycle — et un seul processus
 peut ouvrir un profil, donc les accès navigateur sont sérialisés.
+
+Les anciennes annonces sont rattrapées **au compte-gouttes** :
+`FB_BACKFILL_PER_CYCLE` (5) par cycle, espacées de `FB_BACKFILL_DELAY` (20 s), les plus
+récentes d'abord — soit ~24 h pour 236 annonces. Ouvrir les 236 d'un coup est exactement le
+motif qui fait restreindre un compte. Une annonce sans description est marquée comme telle
+pour ne pas rouvrir sa page à chaque cycle.
 
 La description n'est **pas** dans les résultats de recherche, seulement sur la page de
 l'annonce. Elle est donc lue au moment où tu ouvres la fiche, dans la même vue de page que
@@ -284,6 +290,18 @@ Les écarts entre navigateurs viennent surtout de Safari, et sont corrigés à l
 Un test vérifie ces points, plus le fait qu'aucune page ne déborde horizontalement en
 375 px de large.
 
+**Retour immédiat au clic.** Les pages sont rendues côté serveur : entre le clic et le
+premier octet, il ne se passait rien à l'écran. Une barre fine démarre au clic et se
+termine au chargement, et un bouton déjà envoyé se désactive — mais après l'envoi, sinon sa
+valeur ne part pas. Elle se coupe sous `prefers-reduced-motion`, et s'efface au retour
+arrière depuis le cache.
+
+**Ce qui rendait l'app lente.** `/reglages` mettait **1,3 s** : elle lançait
+`claude auth status` — un processus, ~350 ms — deux fois par rendu, pour une information
+qui ne change qu'à la connexion. Mise en cache une minute, invalidée dès qu'une connexion
+aboutit, et préchauffée au démarrage : **4 ms**. Les autres pages étaient déjà entre 5 et
+23 ms.
+
 ## Homelab (Docker)
 
 ```bash
@@ -365,7 +383,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 86 suites, sans réseau |
+| `test_core.py` | 88 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

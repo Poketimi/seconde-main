@@ -26,6 +26,11 @@ def create_app():
     app.secret_key = auth.secret_key()   # tirée une fois, gardée en base
     settings.load()                      # la base a le dernier mot sur .env
 
+    # `claude auth status` coûte ~350 ms de processus. Le préchauffer en fond
+    # évite que la première visite de /reglages le paie.
+    import threading
+    threading.Thread(target=lambda: ai.cli_auth(), daemon=True).start()
+
     _filters(app)
     _guards(app)
     for mod in (searches, items, assistant, admin, api):

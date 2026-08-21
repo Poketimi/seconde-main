@@ -1,7 +1,7 @@
 """La boucle : scanner, filtrer, juger, cataloguer, traduire, notifier."""
 import json, re, time, threading, subprocess, shutil, traceback
 from concurrent.futures import ThreadPoolExecutor
-import db, ai, geo, sources, config, i18n
+import db, ai, geo, sources, config, i18n, browser
 from .match import (matches_target, keyword_score, passes_rules, dup_key,
                     distance_ok, target_tokens)
 from .store import COLS, upsert_listing, link_seller, ensure_coords, sweep_lifecycle
@@ -252,6 +252,46 @@ def finish_pending(older_than=600, limit=200):
         dropped -= judge(s, cands)
     return seen, dropped
 
+def fb_backfill(limit=None, delay=None):
+    """Récupère les descriptions facebook manquantes, très lentement.
+
+    Elles ne sont pas dans les résultats de recherche : il faut ouvrir chaque
+    annonce. Les 237 d'un coup, c'est le motif qui fait restreindre un compte.
+    On en prend quelques-unes par cycle, espacées, les plus récentes d'abord —
+    ce sont celles qu'on est susceptible d'ouvrir.
+
+    Les annonces déjà disparues sont ignorées : leur page n'existe plus.
+    """
+    if "fb_marketplace" not in sources.ADAPTERS or not browser.available():
+        return 0
+    limit = config.FB_BACKFILL_PER_CYCLE if limit is None else limit
+    delay = config.FB_BACKFILL_DELAY if delay is None else delay
+    if limit <= 0:
+        return 0
+    rows = db.q("""SELECT id, url, title FROM listings
+                   WHERE source='fb_marketplace' AND status='active'
+                     AND (description IS NULL OR description='')
+                   ORDER BY last_seen DESC LIMIT ?""", (limit,))
+    done = 0
+    for i, r in enumerate(rows):
+        if i:
+            time.sleep(delay)
+        try:
+            det = sources.fb_item_details(r["url"])
+        except Exception:
+            continue
+        d = (det.get("description") or "").strip()
+        if d and d.lower() == (r["title"] or "").strip().lower():
+            d = ""          # le titre recopié n'est pas une description
+        if not d:
+            # rien à lire : marquer pour ne pas y revenir à chaque cycle
+            db.run("UPDATE listings SET description='' WHERE id=?", (r["id"],))
+            continue
+        db.run("UPDATE listings SET description=?, ai_enriched=0 WHERE id=?",
+               (d[:4000], r["id"]))
+        done += 1
+    return done
+
 def enrich_backlog(limit=None):
     """Build product entries for every listing seen, matched or not.
 
@@ -313,6 +353,12 @@ def run_all():
         seen, wrote = i18n.backlog()
         if wrote:
             print(f"  [ia] {seen} annonces traduites ({wrote} versions)")
+    except Exception:
+        traceback.print_exc()
+    try:
+        n = fb_backfill()
+        if n:
+            print(f"  [fb] {n} descriptions récupérées")
     except Exception:
         traceback.print_exc()
     try:
