@@ -38,6 +38,16 @@ def listing(lid):
     if l["source"] == "fb_marketplace" and (not images or sellers.stale(seller)):
         # one page view yields both, and facebook views must stay rare
         det = sources.fb_item_details(l["url"])
+        # même vue de page : autant en garder la description, absente des
+        # résultats de recherche
+        # Le bloc le plus long peut être le titre lui-même quand l'annonce n'a
+        # pas de description : ne pas enregistrer un doublon déguisé.
+        _d = (det.get("description") or "").strip()
+        if _d and _d.lower() == (l["title"] or "").strip().lower():
+            _d = ""
+        if _d and not l["description"]:
+            db.run("UPDATE listings SET description=?, ai_enriched=0 WHERE id=?",
+                   (_d[:4000], lid))
         if det.get("images"):
             images = det["images"]
             db.run("UPDATE listings SET images=?, image=COALESCE(?,image) WHERE id=?",

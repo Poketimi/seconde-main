@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 85 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 86 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -110,6 +110,11 @@ python3 browser.py check                              # état des sessions
 Les cookies restent dans `data/browser-profile/` (jamais commité). Les scans tournent en
 headless — une fenêtre visible volait le focus du Mac à chaque cycle — et un seul processus
 peut ouvrir un profil, donc les accès navigateur sont sérialisés.
+
+La description n'est **pas** dans les résultats de recherche, seulement sur la page de
+l'annonce. Elle est donc lue au moment où tu ouvres la fiche, dans la même vue de page que
+les images et le vendeur — trois visites séparées tripleraient l'empreinte sur ton compte
+pour rien. Une annonce jamais ouverte reste sans description, et c'est voulu.
 
 ⚠️ C'est ton compte personnel : Meta peut le restreindre. `BROWSER_TARGETS_PER_CYCLE` limite
 le nombre de pages vues par cycle pour cette raison.
@@ -360,7 +365,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 85 suites, sans réseau |
+| `test_core.py` | 86 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

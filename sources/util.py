@@ -172,9 +172,14 @@ def _gallery_smg(url):
     return out[:12]
 
 def fb_item_details(url):
-    """Images and the seller's profile link, in ONE page view.
+    """Images, description et lien du vendeur, en UNE seule vue de page.
 
-    Two separate visits would double our footprint on facebook for no reason.
+    Trois visites séparées tripleraient notre empreinte sur facebook pour rien —
+    et c'est le compte personnel de l'utilisateur qui est en jeu.
+
+    La description ne figure PAS dans les résultats de recherche, seulement sur
+    la page de l'annonce : d'où 0 description sur 237 annonces facebook tant
+    qu'on ne la lisait pas ici.
     """
     js = """() => {
         const own = i => !i.closest('a[href*="/marketplace/item/"]');
@@ -183,7 +188,19 @@ def fb_item_details(url):
                       && (i.naturalWidth || i.width) >= 300 && own(i))
             .map(i => i.src);
         const a = document.querySelector('a[href*="/marketplace/profile/"]');
-        return {images: imgs, profile: a ? a.getAttribute('href') : null};
+        // La description est le plus long bloc de texte de la page qui ne soit
+        // ni un lien ni un bouton. Facebook change ses classes en permanence ;
+        // viser la structure plutôt qu'un sélecteur qui cassera au prochain
+        // déploiement.
+        let best = "";
+        for (const el of document.querySelectorAll('div[dir="auto"], span[dir="auto"]')) {
+            if (el.closest('a,button,[role="button"],nav,form')) continue;
+            if (el.querySelector('div[dir="auto"],span[dir="auto"]')) continue;
+            const t = (el.innerText || "").trim();
+            if (t.length > best.length) best = t;
+        }
+        return {images: imgs, profile: a ? a.getAttribute('href') : null,
+                description: best.length >= 25 ? best : null};
     }"""
     out = browser.eval_page(url, js, wait_ms=6000, wait_for="img") or {}
     imgs, seen = [], set()
@@ -193,6 +210,7 @@ def fb_item_details(url):
     prof = out.get("profile") or ""
     m = re.search(r"/marketplace/profile/(\d+)", prof)
     return {"images": imgs[:12],
+            "description": (out.get("description") or None),
             "seller_key": m.group(1) if m else None,
             "profile_url": f"https://www.facebook.com/marketplace/profile/{m.group(1)}/"
                            if m else None}

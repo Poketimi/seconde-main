@@ -1778,6 +1778,27 @@ def test_leboncoin_treats_datadome_as_a_refusal():
     assert "blocked" in engine.BACKOFF_STATUSES, "un blocage doit mettre la source en retrait"
     assert lbcmod.PAGE_DELAY >= 2, "enchaîner les pages est ce qui déclenche DataDome"
 
+def test_facebook_description_is_taken_from_the_item_page():
+    """Les résultats de recherche facebook ne portent pas la description.
+
+    D'où 0 description sur 237 annonces facebook. Elle est sur la page de
+    l'annonce, que fb_item_details ouvre déjà pour les images et le vendeur :
+    la lire là ne coûte aucune vue de page supplémentaire, ce qui compte quand
+    c'est le compte personnel de l'utilisateur qui encaisse.
+    """
+    import inspect
+    src = inspect.getsource(sources.fb_item_details)
+    assert "description" in src, "la description n'est pas extraite"
+    assert src.count("browser.eval_page") == 1, \
+        "plusieurs vues de page : l'empreinte sur facebook doublerait"
+
+    # un titre recopié n'est pas une description
+    import app
+    from web import items
+    isrc = inspect.getsource(items.listing)
+    assert 'l["title"]' in isrc and "_d.lower()" in isrc, \
+        "le titre recopié serait enregistré comme description"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
