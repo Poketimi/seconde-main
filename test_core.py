@@ -1940,11 +1940,13 @@ def test_unknown_shipping_is_not_reported_as_pickup_only():
     assert "retrait sur place" in got["sur-place"]
     assert "livraison" in got["livrable"] and "non précisée" not in got["livrable"]
 
-    # l'adaptateur ricardo ne doit rien affirmer : son sitemap ne dit rien
+    # Le sitemap ricardo ne dit rien de la livraison : il applique le défaut
+    # suisse (livrable), jamais 0 — un 0 affirmerait un retrait que personne
+    # n'a annoncé. L'état « inconnu » reste possible et doit rester lisible.
     import inspect
     from sources import ricardo as rmod
-    assert '"shipping": None' in inspect.getsource(rmod), \
-        "le sitemap ricardo affirmerait « retrait sur place »"
+    assert '"shipping": 1' in inspect.getsource(rmod), \
+        "le sitemap ricardo doit appliquer le défaut, pas affirmer un retrait"
 
     for tag, i in ids.items():
         db.run("DELETE FROM listings WHERE id=?", (i,))
@@ -2005,6 +2007,34 @@ def test_platform_flag_still_outranks_the_text():
     Ad.attributes = {"shippable": At("true")}
     Ad.body = "Remise en main propre uniquement"
     assert lbcmod._shipping(Ad()) == 0, "le texte n'a pas rabattu le drapeau"
+
+def test_swiss_sources_default_to_deliverable():
+    """En Suisse, l'envoi est la norme : le silence vaut « livrable ».
+
+    Un vendeur qui refuse d'expédier le dit ; l'inverse va sans dire. leboncoin
+    reste dehors : son API répond, et une supposition n'a pas à écraser une
+    réponse.
+    """
+    from sources.util import delivery, ASSUME_DELIVERABLE
+    for src in ("anibis", "tutti", "ricardo", "fb_marketplace"):
+        assert src in ASSUME_DELIVERABLE
+        assert delivery("Bon état, peu servi", src) == 1, f"{src} : silence mal lu"
+        assert delivery("nur Abholung", src) == 0, f"{src} : le texte doit primer"
+        assert delivery("Versand möglich", src) == 1
+    assert delivery("Bon état", "leboncoin") is None, \
+        "une supposition écraserait la réponse de l'API leboncoin"
+    assert delivery("Bon état", None) is None
+
+def test_ricardo_pickup_only_is_not_shipping():
+    """`get_by_buyer` est un retrait, pas une option d'envoi.
+
+    Les confondre ferait passer 45 retraits pour des colis.
+    """
+    from sources.ricardo import shipping_options as f
+    assert f({"shipping": [{"key": "parcel_b_2kg", "cost": 9}]}) == 1
+    assert f({"shipping": [{"key": "parcel_b_2kg"}, {"key": "get_by_buyer"}]}) == 1
+    assert f({"shipping": [{"key": "get_by_buyer", "cost": 0}]}) == 0
+    assert f({"shipping": []}) is None and f({}) is None and f(None) is None
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

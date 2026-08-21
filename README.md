@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 95 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 97 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -246,6 +246,16 @@ Un filtre **livraison** est disponible sur la page de résultats — c'est la se
 compte quand le vendeur est à 600 km. Le drapeau vient de l'API du site (`shippable` chez
 leboncoin, `face_to_face` pour un retrait sur place).
 
+**En Suisse, le silence vaut « livrable ».** Un vendeur qui refuse d'expédier le dit
+(« nur Abholung ») ; l'inverse va sans dire. anibis, tutti, ricardo et facebook appliquent
+donc ce défaut, et le texte du vendeur le corrige quand il s'exprime. leboncoin en est
+exclu : son API répond, et une supposition n'a pas à écraser une réponse.
+
+⚠️ Conséquence à connaître : `distance_ok` laisse passer une annonce livrable **quelle que
+soit la distance**. Avec ce défaut, le filtre trajet ne s'applique donc plus aux sources
+suisses — ce qui est cohérent pour de la vente par colis, mais retire le garde-fou si tu
+cherches quelque chose à récupérer en main propre. Un « nur Abholung » explicite le remet.
+
 **Quand le site ne dit rien, le vendeur, lui, le dit souvent.** anibis, tutti et facebook
 ne publient aucun champ de livraison — mais 92 des 793 descriptions annonçaient l'envoi en
 toutes lettres. Le texte est donc lu, en **allemand, français et italien** :
@@ -428,7 +438,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 95 suites, sans réseau |
+| `test_core.py` | 97 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

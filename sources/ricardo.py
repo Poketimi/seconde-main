@@ -47,9 +47,10 @@ def ricardo(query, spec=None):
             "category": None, "condition": None,
             "seller_type": None, "seller_name": None, "seller_key": None,
             "location_raw": None, "postal_code": None, "country": "CH",
-            # le sitemap ne porte ni prix ni livraison : None, pas 0. Un 0
-            # affirmerait « retrait sur place » sans que ricardo l'ait dit.
-            "lat": None, "lon": None, "shipping": None, "shipping_cost": None,
+            # le sitemap ne porte ni prix ni description : rien à lire. On
+            # applique le défaut suisse — livrable sauf mention contraire.
+            "lat": None, "lon": None, "shipping": 1, "shipping_cost": None,
+            # (quand ricardo livre sa charge utile, `shipping_options` la lit)
             "image": None, "images": "[]", "posted_at": None,
             "attrs": json.dumps({"source_path": "sitemap", "price_unknown": True}),
             "raw": json.dumps({"from": "sitemap", "url": u}),
@@ -58,3 +59,19 @@ def ricardo(query, spec=None):
             break
     return out
 
+
+
+# Ricardo liste ses options d'envoi, et « get_by_buyer » n'en est pas une : c'est
+# le retrait par l'acheteur. Une annonce qui ne propose que ça n'est pas
+# livrable, et le confondre avec un envoi ferait passer 45 retraits pour des
+# colis. Utilisé quand ricardo fournit sa charge utile ; le sitemap, lui, ne
+# donne rien.
+PICKUP_KEYS = {"get_by_buyer", "pick_up", "abholung"}
+
+def shipping_options(raw):
+    """1 / 0 / None depuis la liste `shipping` d'un payload ricardo."""
+    opts = (raw or {}).get("shipping")
+    if not isinstance(opts, list) or not opts:
+        return None
+    keys = {str(o.get("key", "")).lower() for o in opts if isinstance(o, dict)}
+    return 1 if (keys - PICKUP_KEYS) else 0

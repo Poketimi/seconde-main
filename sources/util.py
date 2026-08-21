@@ -212,7 +212,7 @@ def fb_item_details(url):
     desc = out.get("description") or None
     return {"images": imgs[:12],
             "description": desc,
-            "shipping": delivery_from_text(desc),
+            "shipping": delivery(desc, "fb_marketplace"),
             "seller_key": m.group(1) if m else None,
             "profile_url": f"https://www.facebook.com/marketplace/profile/{m.group(1)}/"
                            if m else None}
@@ -274,6 +274,22 @@ _SHIP_NO = re.compile(
     r"|\b(uniquement|seulement)[^.!?\n]{0,30}main\s*propre"
     r"|je\s+n['e]\s*(envoie|exp[ée]die)\s*pas"
     r"|solo\s+ritiro|ritiro\s+in\s+loco)", re.I)
+
+# En Suisse, l'envoi est la norme : un vendeur qui ne veut pas expédier le dit
+# ("nur Abholung"), l'inverse va sans dire. Pour ces sources, le silence vaut
+# donc "livrable". leboncoin n'est pas dans la liste : son API le sait, et une
+# supposition n'a pas à écraser une réponse.
+ASSUME_DELIVERABLE = ("anibis", "tutti", "ricardo", "fb_marketplace")
+
+def delivery(text, source=None):
+    """Le drapeau livraison pour une annonce, avec le défaut propre à la source.
+
+    Le texte prime toujours ; le défaut ne s'applique qu'au silence.
+    """
+    v = delivery_from_text(text)
+    if v is None and source in ASSUME_DELIVERABLE:
+        return 1
+    return v
 
 def delivery_from_text(text):
     """1 livrable, 0 retrait seulement, None si le vendeur n'en dit rien.
