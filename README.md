@@ -299,24 +299,31 @@ annonce, les trois voies réseau, et les pièges déjà rencontrés.
 
 ## Fichiers
 
+Un paquet par sujet, un fichier par feature. Chaque `__init__.py` ré-exporte sa
+surface publique, donc `import ai`, `import engine`, `import sources` continuent de
+marcher tels quels.
+
 | | |
 |---|---|
-| `app.py` | routes Flask (41) et rendu |
-| `engine.py` | la boucle : scan → filtres → match → notification |
+| `app.py` | 12 lignes : construit l'app et lance la boucle |
+| `web/` | l'interface — `searches` · `items` · `assistant` · `admin` · `api` · `helpers` |
+| `sources/` | un fichier par site — `smg` (anibis+tutti) · `ricardo` · `facebook` · `mail` · `registry` · `util` |
+| `ai/` | `client` (comptes, routage, appel) · `budget` · `classify` · `assistant` · `checks` |
+| `engine/` | `match` · `store` · `health` · `scan` · `checks` |
 | `crawler.py` | acquisition identifiée : robots.txt, délais, cache conditionnel |
-| `sources.py` | un adaptateur par site |
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
-| `ai.py` | modèles, lots, bascule entre comptes, budget |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
-| `i18n.py` | traductions |
-| `settings.py` | fournisseur / clé / modèles, réglables à chaud |
-| `auth.py` | le compte et le mot de passe |
-| `geo.py` | codes postaux, trajets |
-| `db.py` | schéma SQLite et migrations |
-| `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
-| `reference.py` | prix neuf de référence |
-| `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
+| `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
 | `test_core.py` | 80 suites, sans réseau |
+
+`web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
+les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les
+gabarits et la navigation. Ce collecteur laisse `@app.route(...)` inchangé et
+rejoue les routes sur la vraie app, en gardant le nom de la fonction.
+
+**Piège du découpage :** réassigner un nom ré-exporté (`ai.chat = stub`) ne change
+que ce nom. Les appelants résolvent le leur dans leur propre module — viser
+`ai.budget.chat`, `engine.scan.judge`, `sources.registry.probe_market`.
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.

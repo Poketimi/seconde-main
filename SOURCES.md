@@ -1,5 +1,15 @@
 # Brancher un nouveau site
 
+> **Où se trouve quoi** — le code est découpé en paquets, un fichier par sujet :
+> `sources/` (un par site), `web/` (un par domaine de pages), `ai/`, `engine/`.
+> Chaque `__init__.py` ré-exporte tout, donc `import sources` marche comme avant.
+>
+> **Un piège à connaître :** réassigner un nom ré-exporté ne change que ce
+> nom-là. `ai.chat = mon_stub` ne touche pas ce que `smart_chat` appelle, parce
+> que `smart_chat` résout `chat` dans **son** module. Pour remplacer une
+> fonction, viser le module qui la résout : `ai.budget.chat = mon_stub`.
+
+
 Tout ce qu'il faut savoir pour ajouter une source. Un adaptateur, c'est **une
 fonction** ; tout le reste — filtres, distance, IA, dédoublonnage, traduction,
 notifications — est déjà là et s'applique tout seul.

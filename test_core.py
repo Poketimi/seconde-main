@@ -147,8 +147,8 @@ def test_truncated_model_replies_are_retried():
 def test_tradeoffs_are_surfaced():
     """When the model contradicts a stated preference it must say so, instead
     of quietly returning something else."""
-    real = ai.smart_chat
-    ai.smart_chat = lambda sysm, usr, purpose, **kw: (json.dumps({
+    real = ai.assistant.smart_chat
+    ai.assistant.smart_chat = lambda sysm, usr, purpose, **kw: (json.dumps({
         "name": "moto", "query": "roadster", "category": "moto",
         "targets": [{"name": "Yamaha MT-09", "query": "Yamaha MT-09"}],
         "tradeoffs": [{"demande": "un GT", "propose": "des roadsters",
@@ -159,7 +159,7 @@ def test_tradeoffs_are_surfaced():
     try:
         c = ai.build_criteria("moto", {}, {}, known_sources=[])
     finally:
-        ai.smart_chat = real
+        ai.assistant.smart_chat = real
     assert len(c["tradeoffs"]) == 1, c["tradeoffs"]
     t = c["tradeoffs"][0]
     assert t["demande"] == "un GT" and t["sinon"] == "monter à 8000 CHF"
@@ -185,15 +185,15 @@ def test_live_reload_is_opt_in():
 def test_budget_is_a_ceiling_not_a_floor():
     """Answering "150-300€" means at most 300 — a bargain at 90 is better, not
     worse. Turning it into a floor threw away exactly what the user wants."""
-    real = ai.smart_chat
+    real = ai.assistant.smart_chat
     def crit(pmin, pmax):
-        ai.smart_chat = lambda sysm, usr, purpose, **kw: (json.dumps({
+        ai.assistant.smart_chat = lambda sysm, usr, purpose, **kw: (json.dumps({
             "name": "x", "query": "y", "category": "sport",
             "price_min": pmin, "price_max": pmax}), False)
         try:
             return ai.build_criteria("x", {}, {}, known_sources=[])
         finally:
-            ai.smart_chat = real
+            ai.assistant.smart_chat = real
 
     c = crit(150, 300)
     assert c["price_min"] is None and c["price_max"] == 300, c
@@ -261,8 +261,8 @@ def test_interview_template_cache():
     never hit and every interview was paid for twice."""
     db.run("DELETE FROM interview_templates")
     calls = []
-    real = ai.smart_chat
-    ai.smart_chat = lambda sysm, usr, purpose, **kw: (calls.append(purpose) or (json.dumps({
+    real = ai.assistant.smart_chat
+    ai.assistant.smart_chat = lambda sysm, usr, purpose, **kw: (calls.append(purpose) or (json.dumps({
         "category": "ski",
         "questions": [{"id": "level", "text": "Niveau ?", "type": "choice",
                        "options": ["Débutant", "Avancé"], "scope": "domain"},
@@ -277,7 +277,7 @@ def test_interview_template_cache():
         assert cached3, "la catégorie doit aussi servir de clé"
         assert len(calls) == 1, f"{len(calls)} appels au modèle cher au lieu de 1"
     finally:
-        ai.smart_chat = real
+        ai.assistant.smart_chat = real
 
 def test_smart_budget_cap():
     """Past the yearly cap the interview degrades to the cheap model."""
@@ -290,12 +290,14 @@ def test_smart_budget_cap():
     assert ai.budget_left() == 0, "le plafond doit être atteint"
 
     called = {}
-    real = ai.chat
-    ai.chat = lambda sys_, usr, **kw: called.setdefault("models", kw.get("models")) or "{}"
+    # smart_chat vit dans ai/budget.py et y résout `chat` : c'est ce nom-là
+    # qu'il faut remplacer, pas celui d'un autre module du paquet.
+    real = ai.budget.chat
+    ai.budget.chat = lambda sys_, usr, **kw: called.setdefault("models", kw.get("models")) or "{}"
     try:
-        ai.smart_chat("s", "u", "test")
+        ai.budget.smart_chat("s", "u", "test")
     finally:
-        ai.chat = real
+        ai.budget.chat = real
     assert config.SMART_MODEL not in called["models"], \
         "au-delà du plafond, le modèle cher ne doit plus être appelé"
 
@@ -528,11 +530,11 @@ def test_health_is_a_whole_cycle_verdict():
                   active,created_at) VALUES(?,?,'any',1,'[]',?,1,0)""",
                (name, q, json.dumps(["flaky"])))
     real = ai.analyse
-    ai.analyse = lambda i, r=None, budget=None: {}
+    ai.analyse = ai.classify.analyse = lambda i, r=None, budget=None: {}
     try:
         engine.run_all()
     finally:
-        ai.analyse = real
+        ai.analyse = ai.analyse = ai.classify.analyse = real
     h = db.q("SELECT status, fail_streak FROM source_health WHERE source='flaky'", one=True)
     assert h["status"] == "ok", f"une requête vide ne doit pas condamner la source ({h['status']})"
     assert h["fail_streak"] == 0
@@ -718,11 +720,11 @@ def test_browser_sources_rotate_targets():
             db.run("INSERT INTO targets(search_id,name,query,active,created_at)"
                    " VALUES(?,?,?,1,0)", (sid, f"Model {i}", f"model{i}"))
         real = ai.analyse
-        ai.analyse = lambda items, req=None, budget=None: {}
+        ai.analyse = ai.classify.analyse = lambda items, req=None, budget=None: {}
         try:
             engine.run_search(db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True))
         finally:
-            ai.analyse = real
+            ai.analyse = ai.analyse = ai.classify.analyse = real
         # rotation now applies to every source: 2574 requests/day got us
         # challenged by ricardo, anibis, leboncoin and tutti at once
         assert hits["light"] == config.TARGETS_PER_CYCLE, \
@@ -790,11 +792,11 @@ def test_targets_drive_the_scan():
         db.run("INSERT INTO targets(search_id,name,query,active,created_at) VALUES(?,?,?,1,0)",
                (sid, n, n))
     real = ai.analyse
-    ai.analyse = lambda items, req=None, budget=None: {}
+    ai.analyse = ai.classify.analyse = lambda items, req=None, budget=None: {}
     try:
         engine.run_search(db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True))
     finally:
-        ai.analyse = real
+        ai.analyse = ai.analyse = ai.classify.analyse = real
     got = {r["title"] for r in db.q("""SELECT l.title FROM matches m
                                        JOIN listings l ON l.id=m.listing_id
                                        WHERE m.search_id=?""", (sid,))}
@@ -836,12 +838,12 @@ def test_matches_skip_duplicates():
     sid = db.run("""INSERT INTO searches(name,query,seller_type,shipping_ok,origins,sources,
                     active,created_at) VALUES('d','jbl','any',1,'[]',?,1,0)""",
                  (json.dumps(["fake_dup"]),))
-    real_ai = ai.analyse                     # tests stay offline and free
-    ai.analyse = lambda items, req=None, budget=None: {}
+    real_ai = ai.classify.analyse                     # tests stay offline and free
+    ai.analyse = ai.classify.analyse = lambda items, req=None, budget=None: {}
     try:
         engine.run_search(db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True))
     finally:
-        ai.analyse = real_ai
+        ai.analyse = ai.analyse = ai.classify.analyse = real_ai
     assert db.q("SELECT COUNT(*) n FROM listings", one=True)["n"] == 3, "tout reste au catalogue"
     n = db.q("SELECT COUNT(*) n FROM matches WHERE search_id=?", (sid,), one=True)["n"]
     assert n == 2, f"attendu 2 matchs (1 dédupliqué + 1 autre ville), obtenu {n}"
@@ -849,8 +851,11 @@ def test_matches_skip_duplicates():
 def test_market_leads_are_verified():
     """The interview model has no web access and invents plausible domains:
     2 of 3 suggestions did not resolve in testing. Never show them unchecked."""
-    real = sources.probe_market
-    sources.probe_market = lambda url: {
+    # patcher au point de définition : depuis la découpe en paquet, réassigner
+    # `sources.probe_market` ne change que le nom ré-exporté, pas celui que
+    # verify_markets résout dans son propre module.
+    real = sources.registry.probe_market
+    sources.registry.probe_market = lambda url: {
         "https://dead.example/x": ("dead", "domaine inexistant"),
         "https://ok.example/x": ("parsable", "12 annonces"),
         "https://meh.example/x": ("manual", "rien de structuré"),
@@ -861,15 +866,15 @@ def test_market_leads_are_verified():
             {"name": "Bon", "url": "https://ok.example/x"},
             {"name": "Moyen", "url": "https://meh.example/x"}])
     finally:
-        sources.probe_market = real
+        sources.registry.probe_market = real
     assert [m["name"] for m in out] == ["Bon", "Moyen"], "un domaine mort doit disparaître"
     assert out[0]["status"] == "parsable" and out[1]["status"] == "manual"
     assert sources.verify_markets([]) == []
 
 def test_criteria_filters_unknown_sources():
     """The model must not select an adapter we do not have."""
-    real = ai.smart_chat
-    ai.smart_chat = lambda sysm, usr, purpose, **kw: (json.dumps({
+    real = ai.assistant.smart_chat
+    ai.assistant.smart_chat = lambda sysm, usr, purpose, **kw: (json.dumps({
         "name": "x", "query": "y", "category": "sport",
         "sources": ["anibis", "site_qui_nexiste_pas"],
         "other_markets": [{"name": "A", "url": "notaurl"},
@@ -878,7 +883,7 @@ def test_criteria_filters_unknown_sources():
     try:
         c = ai.build_criteria("ski", {}, {}, known_sources=["anibis", "tutti"])
     finally:
-        ai.smart_chat = real
+        ai.assistant.smart_chat = real
     assert c["sources"] == ["anibis"], c["sources"]
     assert [m["name"] for m in c["other_markets"]] == ["B"], "URL invalide à écarter"
 
@@ -1197,32 +1202,34 @@ def test_own_provider_and_models():
 def test_smart_model_steps_down_when_the_account_is_empty():
     """The ledger only sees its own calls; an empty account must still demote."""
     saved = {k: getattr(config, k) for k in settings.FIELDS}
-    real_chat, real_credit = ai.chat, ai.credit
+    # smart_chat vit dans ai/budget.py : c'est le `chat` de CE module qu'il
+    # résout, pas celui d'assistant.py.
+    real_chat, real_credit = ai.budget.chat, ai.budget.credit
     seen = {}
     def spy(system, user, temperature=0.0, max_tokens=8000, models=None,
             on_usage=None, cli=False, job=None):
         seen["chain"] = list(models or [])
         return None
     try:
-        ai.chat = spy
+        ai.budget.chat = spy
         db.run("DELETE FROM ai_spend")          # well under the yearly cap
 
-        ai.credit = lambda max_age=300: 4.20    # money left: use the good model
-        ai.smart_chat("s", "u", "test")
+        ai.budget.credit = lambda max_age=300: 4.20    # money left: use the good model
+        ai.budget.smart_chat("s", "u", "test")
         assert seen["chain"][0] == config.SMART_MODEL, seen["chain"]
 
-        ai.credit = lambda max_age=300: 0.0     # account dry: step down
-        ai.smart_chat("s", "u", "test")
+        ai.budget.credit = lambda max_age=300: 0.0     # account dry: step down
+        ai.budget.smart_chat("s", "u", "test")
         assert config.SMART_MODEL not in seen["chain"], \
             f"empty account still billed the expensive model: {seen['chain']}"
         assert seen["chain"][0] == config.AI_MODEL
 
-        ai.credit = lambda max_age=300: None    # provider says nothing: carry on
-        ai.smart_chat("s", "u", "test")
+        ai.budget.credit = lambda max_age=300: None    # provider says nothing: carry on
+        ai.budget.smart_chat("s", "u", "test")
         assert seen["chain"][0] == config.SMART_MODEL, \
             "an unknown balance must not be read as an empty one"
     finally:
-        ai.chat, ai.credit = real_chat, real_credit
+        ai.budget.chat, ai.budget.credit = real_chat, real_credit
         _restore_ai(saved)
 
 def test_settings_page_never_echoes_the_key():
@@ -1280,11 +1287,11 @@ def test_password_is_never_stored_in_the_clear():
 def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
     """The subscription must never carry bulk work, and must not break anything."""
     saved = {k: getattr(config, k) for k in settings.FIELDS}
-    real_cli, real_which = ai._cli_chat, ai.shutil.which
+    real_cli, real_which = ai.client._cli_chat, ai.client.shutil.which
     ai._tier_down.clear()
     try:
         config.CLAUDE_CLI = True
-        ai.shutil.which = lambda n: "/fake/claude"
+        ai.client.shutil.which = lambda n: "/fake/claude"
 
         # bulk work must not see it, however it is configured
         assert "abonnement" not in [t["name"] for t in ai.tiers()], \
@@ -1298,7 +1305,7 @@ def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
         config.CLAUDE_CLI = True
 
         # an expired session parks it and falls through to the API key
-        ai._cli_chat = lambda *a, **k: (None, "OAuth session expired")
+        ai.client._cli_chat = lambda *a, **k: (None, "OAuth session expired")
         db.run("DELETE FROM ai_cache")
         calls = []
         real_post = ai.net.post_json
@@ -1308,14 +1315,14 @@ def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
                 return {"choices": [{"message": {"content": '{"ok":1}'}}], "usage": {}}
         ai.net.post_json = lambda u, b, headers=None, timeout=None: (calls.append(u), R())[1]
         try:
-            assert ai.chat("s", "u", cli=True) == '{"ok":1}', "no fallback after expiry"
+            assert ai.assistant.chat("s", "u", cli=True) == '{"ok":1}', "no fallback after expiry"
             assert calls, "the API key was never tried"
             assert ai._tier_down.get("abonnement", 0) > time.time(), \
                 "expired subscription retried on every call"
         finally:
             ai.net.post_json = real_post
     finally:
-        ai._cli_chat, ai.shutil.which = real_cli, real_which
+        ai.client._cli_chat, ai.client.shutil.which = real_cli, real_which
         ai._tier_down.clear()
         db.run("DELETE FROM ai_cache")
         _restore_ai(saved)
@@ -1359,16 +1366,16 @@ def test_settings_page_lists_every_provider():
 def test_connections_dashboard_offers_a_fix():
     """An expired session must be visible and repairable without a terminal."""
     import app
-    real_auth, real_which = ai.cli_auth, ai.shutil.which
+    real_auth, real_which = ai.cli_auth, ai.client.shutil.which
     saved = {k: getattr(config, k) for k in settings.FIELDS}
     try:
-        ai.shutil.which = lambda n: "/fake/claude"
-        ai.cli_auth = lambda: {"loggedIn": False, "authMethod": "none"}
+        ai.client.shutil.which = lambda n: "/fake/claude"
+        ai.cli_auth = ai.client.cli_auth = lambda: {"loggedIn": False, "authMethod": "none"}
         html = app.app.test_client().get("/connexions").get_data(as_text=True)
         assert "session expirée" in html, "expired session not surfaced"
         assert url_for_login(app) in html, "no button to repair it"
 
-        ai.cli_auth = lambda: {"loggedIn": True, "authMethod": "claudeai"}
+        ai.cli_auth = ai.client.cli_auth = lambda: {"loggedIn": True, "authMethod": "claudeai"}
         config.CLAUDE_CLI = True
         html = app.app.test_client().get("/connexions").get_data(as_text=True)
         assert "session expirée" not in html and "actif" in html, \
@@ -1377,7 +1384,8 @@ def test_connections_dashboard_offers_a_fix():
         st = app.app.test_client().get("/api/connexions").get_json()
         assert st["cli_logged"] is True, "poller cannot see the session came back"
     finally:
-        ai.cli_auth, ai.shutil.which = real_auth, real_which
+        ai.cli_auth = ai.client.cli_auth = real_auth
+        ai.client.shutil.which = real_which
         _restore_ai(saved)
 
 def url_for_login(app):
@@ -1388,7 +1396,7 @@ def url_for_login(app):
 def test_cli_login_never_touches_credentials():
     """The app opens the door; it must not read or carry any secret."""
     import inspect
-    src = inspect.getsource(ai.cli_login)
+    src = inspect.getsource(ai.client.cli_login)
     for forbidden in ("keychain", "security find", ".credentials.json", "password"):
         assert forbidden not in src.lower(), f"cli_login reaches for {forbidden}"
     assert "auth login" in src, "login must go through the CLI's own flow"
@@ -1466,11 +1474,11 @@ def test_interrupted_scan_does_not_leave_matches_provisional():
                 one=True)["score"] < 40, "the foil should score badly on keywords"
 
     real = ai.analyse
-    ai.analyse = lambda *a, **k: {}          # no AI: the keyword cut-off applies
+    ai.analyse = ai.classify.analyse = lambda *a, **k: {}          # no AI: the keyword cut-off applies
     try:
         seen, dropped = engine.finish_pending(older_than=60)
     finally:
-        ai.analyse = real
+        ai.analyse = ai.analyse = ai.classify.analyse = real
     assert seen == 2, seen
     assert dropped == 1, f"the foil should have been dropped, dropped={dropped}"
     assert db.q("SELECT 1 FROM matches WHERE listing_id=?", (junk,), one=True) is None, \
@@ -1585,12 +1593,12 @@ def test_job_route_picks_the_model():
         ai.net.post_json = fake
         ai._tier_down.clear()
         db.run("DELETE FROM ai_cache")
-        ai.chat("s", "u", job="traduction")
+        ai.assistant.chat("s", "u", job="traduction")
         assert seen["model"] == "mon-modele", seen["model"]
         # and with no model pinned, the account default is used
         config.JOB_ROUTES = {}
         db.run("DELETE FROM ai_cache")
-        ai.chat("s", "u", job="traduction")
+        ai.assistant.chat("s", "u", job="traduction")
         assert seen["model"] == config.AI_FALLBACKS[0], seen["model"]
     finally:
         ai.net.post_json = real_post
