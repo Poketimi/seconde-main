@@ -411,6 +411,13 @@ def reglages():
             vals["AI_MODEL"] = vals.get("AI_MODEL") or model
             vals["SMART_MODEL"] = vals.get("SMART_MODEL") or \
                 config.PROVIDER_SMART.get(prov, model)
+        # tableau des travaux : un select + un champ par ligne
+        routes = {}
+        for j in config.JOBS:
+            routes[j] = {"account": request.form.get(f"acct_{j}", ""),
+                         "model": request.form.get(f"model_{j}", "")}
+        if any(request.form.get(f"acct_{j}") is not None for j in config.JOBS):
+            vals["JOB_ROUTES"] = json.dumps(routes)
         settings.save(vals)
         if request.form.get("probe"):
             ok, msg = settings.probe()
@@ -421,6 +428,9 @@ def reglages():
     return render_template("reglages.html", cur=settings.current(),
                            ebay_ok=__import__("ebay").configured(),
                            mail_ok=__import__("mailbox").configured(),
+                           jobs=config.JOBS, accounts=config.ACCOUNTS,
+                           no_sub=config.JOBS_NO_SUBSCRIPTION,
+                           routes=ai.job_table(),
                            providers=config.PROVIDERS, smart=config.PROVIDER_SMART,
                            spent=ai.spend_since(), left=ai.budget_left(),
                            credit=ai.credit(), tiers=ai.tier_status(),

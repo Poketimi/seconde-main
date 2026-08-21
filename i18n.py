@@ -124,7 +124,8 @@ def translate(rows, langs=AUTO):
         example=_example(langs))
     # 5 annonces par appel : deux langues x description, une taille plus grande
     # sort tronquée (ai.run_batches recoupe, mais autant ne pas y arriver).
-    out = ai.run_batches(system, [dict(r) for r in rows], _brief, batch=5)
+    out = ai.run_batches(system, [dict(r) for r in rows], _brief, batch=5,
+                         job="traduction")
     n = 0
     for i, r in enumerate(rows):
         res = out.get(i)

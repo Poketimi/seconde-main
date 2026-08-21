@@ -106,6 +106,34 @@ ALT_API_KEY  = os.environ.get("ALT_API_KEY", "").strip()
 ALT_BASE_URL = os.environ.get("ALT_BASE_URL", _abase).rstrip("/")
 ALT_MODEL    = os.environ.get("ALT_MODEL", _amodel)
 
+# --- qui fait quoi, et qui paie ---------------------------------------
+# Trois travaux, trois profils de coût très différents. Chacun peut viser un
+# compte ("principal", "repli", "abonnement") et un modèle précis ; modèle vide
+# = celui du compte. Réglable dans /reglages.
+JOBS = {
+    "tri":        {"label": "Tri des annonces",
+                   "hint": "des centaines d'appels par jour — prends petit et rapide"},
+    "traduction": {"label": "Traduction des annonces",
+                   "hint": "un appel par lot de 5 annonces, sorties longues"},
+    "entretien":  {"label": "Entretien de l'assistant",
+                   "hint": "2 appels par recherche — c'est là qu'un bon modèle paie"},
+}
+ACCOUNTS = {
+    "principal":  "Compte principal (clé d'API)",
+    "repli":      "Compte de repli (clé d'API)",
+    "abonnement": "Abonnement Claude Code",
+}
+# L'abonnement est délibérément hors de portée du travail en masse : chaque
+# appel `claude -p` traîne ~24 000 jetons de contexte Claude Code, mesurés.
+# Des centaines par jour épuiseraient les limites de débit en minutes.
+JOBS_NO_SUBSCRIPTION = ("tri", "traduction")
+
+import json as _json
+try:
+    JOB_ROUTES = _json.loads(os.environ.get("JOB_ROUTES") or "{}")
+except Exception:
+    JOB_ROUTES = {}
+
 # --- alertes e-mail ---------------------------------------------------
 # Les sites qui refusent ce crawler envoient volontiers leurs propres alertes.
 # Les lire dans ta boîte, c'est la même donnée sans une seule requête chez eux.

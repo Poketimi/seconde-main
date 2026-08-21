@@ -8,7 +8,7 @@ changer. Ce n'est pas un coffre-fort : data/market.db est en clair sur ta
 machine, exactement comme .env l'était. Elle n'est jamais renvoyée à la page —
 seuls les derniers caractères sont affichés.
 """
-import time
+import json, time
 import db, config
 
 # Ce que la page de réglages possède. Le reste reste dans config.py.
@@ -21,7 +21,9 @@ FIELDS = ("AI_PROVIDER", "AI_BASE_URL", "AI_MODEL", "AI_API_KEY",
           # eBay : API officielle, pas du crawl
           "EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "EBAY_MARKETPLACE",
           # alertes e-mail : la voie légitime vers leboncoin & les Scout24
-          "IMAP_HOST", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD", "IMAP_FOLDER")
+          "IMAP_HOST", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD", "IMAP_FOLDER",
+          # qui fait quoi et qui paie : un JSON, pas six champs
+          "JOB_ROUTES")
 SECRET = ("AI_API_KEY", "ALT_API_KEY", "EBAY_CLIENT_SECRET", "IMAP_PASSWORD")
 
 def stored():
@@ -30,6 +32,15 @@ def stored():
 def _coerce(k, v):
     if k == "CLAUDE_CLI":
         return str(v).strip() in ("1", "true", "on", "oui")
+    if k == "JOB_ROUTES":
+        import json
+        try:
+            d = v if isinstance(v, dict) else json.loads(v or "{}")
+        except Exception:
+            return None
+        return {j: {"account": str(r.get("account") or ""),
+                    "model": str(r.get("model") or "").strip()}
+                for j, r in d.items() if j in config.JOBS}
     if k == "IMAP_PORT":
         try:
             return int(str(v).strip())
@@ -66,8 +77,9 @@ def save(values):
             continue          # champ laissé vide = on garde l'ancienne valeur
         if _coerce(k, v) in (None, ""):
             continue
+        raw = json.dumps(_coerce(k, v)) if k == "JOB_ROUTES" else str(v).strip()
         db.run("INSERT OR REPLACE INTO settings(k,v,updated_at) VALUES(?,?,?)",
-               (k, str(v).strip(), now))
+               (k, raw, now))
     apply(values)
 
 def clear(key):
@@ -99,6 +111,7 @@ def current():
             "IMAP_HOST": config.IMAP_HOST, "IMAP_PORT": config.IMAP_PORT,
             "IMAP_USER": config.IMAP_USER, "IMAP_FOLDER": config.IMAP_FOLDER,
             "IMAP_PASSWORD": masked(config.IMAP_PASSWORD),
+            "JOB_ROUTES": getattr(config, "JOB_ROUTES", None) or {},
             "from_db": sorted(stored().keys())}
 
 def _reachable(url, timeout=1.0):

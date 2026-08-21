@@ -1048,7 +1048,7 @@ def _fake_listing(url="https://tr/1", title="Bergschuhe Grösse 43",
 
 def _stub_batches(calls, payload):
     """Replace the model with a canned answer and count how often it is asked."""
-    def fake(system, listings, brief=None, budget=None, batch=None):
+    def fake(system, listings, brief=None, budget=None, batch=None, job=None):
         calls.append(len(listings))
         return {i: payload for i, _ in enumerate(listings)}
     return fake
@@ -1200,7 +1200,7 @@ def test_smart_model_steps_down_when_the_account_is_empty():
     real_chat, real_credit = ai.chat, ai.credit
     seen = {}
     def spy(system, user, temperature=0.0, max_tokens=8000, models=None,
-            on_usage=None, cli=False):
+            on_usage=None, cli=False, job=None):
         seen["chain"] = list(models or [])
         return None
     try:
@@ -1667,6 +1667,77 @@ def test_mail_listings_go_through_the_normal_pipeline():
     assert got["price"] == 1250.0 and got["source"] == "leboncoin"
     assert got["currency"] == "EUR"
     db.run("DELETE FROM listings WHERE id=?", (lid,))
+
+
+# --- per-job routing -------------------------------------------------------
+
+def test_bulk_work_can_never_be_put_on_the_subscription():
+    """Measured: each `claude -p` call drags ~24k tokens of Claude Code context.
+
+    Two per search is nothing; hundreds a day would exhaust the subscription's
+    rate limits in minutes. Choosing it for bulk must be refused in code, not
+    merely hidden in the form.
+    """
+    saved = getattr(config, "JOB_ROUTES", {})
+    try:
+        config.JOB_ROUTES = {j: {"account": "abonnement", "model": "m"}
+                             for j in config.JOBS}
+        for job in ("tri", "traduction"):
+            acct, _ = ai.route(job)
+            assert acct != "abonnement", f"{job} was routed to the subscription"
+        assert ai.route("entretien")[0] == "abonnement", "the interview may use it"
+    finally:
+        config.JOB_ROUTES = saved
+
+def test_job_route_picks_the_account_and_model():
+    saved = (getattr(config, "JOB_ROUTES", {}), config.AI_FALLBACKS)
+    seen = {}
+    real_post = ai.net.post_json
+    class R:
+        status_code = 200
+        def json(self):
+            return {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+    def fake(url, body, headers=None, timeout=None):
+        seen["url"], seen["model"] = url, body.get("model")
+        return R()
+    try:
+        config.JOB_ROUTES = {"traduction": {"account": "repli", "model": "mon-modele"}}
+        config.ALT_PROVIDER, config.ALT_BASE_URL = "openrouter", "https://repli/v1"
+        config.ALT_API_KEY, config.ALT_MODEL = "k2", "defaut-repli"
+        ai.net.post_json = fake
+        ai._tier_down.clear()
+        db.run("DELETE FROM ai_cache")
+        ai.chat("s", "u", job="traduction")
+        assert "repli" in seen["url"], f"went to {seen['url']} instead of the chosen account"
+        assert seen["model"] == "mon-modele", seen["model"]
+    finally:
+        ai.net.post_json = real_post
+        db.run("DELETE FROM ai_cache")
+        config.JOB_ROUTES, config.AI_FALLBACKS = saved
+
+def test_subscription_calls_do_not_eat_the_api_budget():
+    """The point of the subscription is that it costs nothing here."""
+    db.run("DELETE FROM ai_spend")
+    before = ai.budget_left()
+    ai.record_spend("claude-code/claude-sonnet-5",
+                    {"prompt_tokens": 9, "completion_tokens": 191, "cost": 0.0},
+                    "entretien")
+    row = db.q("SELECT cost_usd, tokens_in, tokens_out FROM ai_spend", one=True)
+    assert row["cost_usd"] == 0.0, "a subscription call was billed to the API budget"
+    assert row["tokens_in"] == 9 and row["tokens_out"] == 191, "tokens lost"
+    assert ai.budget_left() == before
+    db.run("DELETE FROM ai_spend")
+
+def test_settings_page_shows_what_each_job_really_uses():
+    import app
+    html = app.app.test_client().get("/reglages").get_data(as_text=True)
+    for job, meta in config.JOBS.items():
+        assert meta["label"] in html, f"{job} missing from the panel"
+        assert f'name="acct_{job}"' in html and f'name="model_{job}"' in html
+    # the subscription must not even be offered for bulk work
+    i = html.index('name="acct_tri"')
+    assert "abonnement" not in html[i:i + 400].lower(), \
+        "the subscription is offered for bulk work"
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

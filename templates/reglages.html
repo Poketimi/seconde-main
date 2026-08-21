@@ -116,6 +116,47 @@ redémarrer : le changement s'applique à la requête suivante.</p>
   </fieldset>
 
   <fieldset>
+    <legend>Qui fait quoi, et qui paie</legend>
+    <p class="faint">Les trois travaux n'ont pas du tout le même profil de coût. Chacun peut
+      viser un compte et un modèle précis ; modèle vide = celui du compte.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Travail</th><th class="nowrap">Compte</th><th>Modèle</th>
+        <th class="nowrap">Payé par</th></tr></thead>
+      {% for r in routes %}
+      <tr>
+        <td class="main">{{ r.label }}<div class="faint">{{ r.hint }}</div></td>
+        <td class="nowrap">
+          <select name="acct_{{ r.job }}">
+            <option value="" {{ 'selected' if not r.account }}>automatique</option>
+            {% for a, lbl in accounts.items() %}
+              {% if a != 'abonnement' or r.sub_allowed %}
+              <option value="{{ a }}" {{ 'selected' if r.account == a }}>{{ lbl }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </td>
+        <td><input name="model_{{ r.job }}" value="{{ r.model }}" list="models"
+                   autocomplete="off" placeholder="{{ r.resolved_model or 'défaut du compte' }}"
+                   style="min-width:12rem"></td>
+        <td class="nowrap">
+          <span class="pill {{ 'ok' if r.paid_by == 'abonnement' else 'empty' }}">
+            <i class="dot"></i>{{ r.paid_by }}</span>
+          {% if r.account and r.resolved_account != r.account %}
+            <div class="faint">demandé : {{ r.account }} — indisponible</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    <p class="faint">L'abonnement n'est pas proposé pour le tri ni la traduction, et un
+      garde-fou côté code le refuserait de toute façon : <b>mesuré</b>, chaque appel
+      <code>claude -p</code> traîne ~24 000 jetons de contexte Claude Code. Deux appels par
+      recherche, aucun problème ; des centaines par jour épuiseraient les limites de débit
+      de l'abonnement en quelques minutes.</p>
+    <p class="faint">Un compte indisponible n'arrête rien : la colonne « payé par » montre
+      ce qui servira <b>réellement</b>, pas ce qui a été coché.</p>
+  </fieldset>
+
+  <fieldset>
     <legend>Alertes e-mail <span class="faint">— leboncoin, autoscout24, motoscout24, immoscout24</span></legend>
     <p class="faint">Ces sites <b>interdisent le crawl</b> et ce refus tient. Mais ils
       envoient volontiers leurs propres alertes : enregistre la recherche <b>chez eux</b>,

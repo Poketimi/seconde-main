@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 81 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 85 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -169,6 +169,26 @@ l'API** — aucun bouton ne peut changer ça. Ce qui marche :
 - un **modèle local** via Ollama : gratuit, hors ligne, plus lent et moins fin ;
 - pour l'entretien seulement, l'**abonnement Claude Code** (voir plus bas).
 
+### Qui fait quoi, et qui paie
+
+Trois travaux, trois profils de coût. Le tableau de `/reglages` assigne à chacun un compte
+(**principal**, **repli**, **abonnement**) et un modèle ; modèle vide = celui du compte.
+
+| travail | fréquence | ce qui compte |
+|---|---|---|
+| tri des annonces | des centaines d'appels/jour | petit et rapide |
+| traduction | un appel par lot de 5 | sorties longues |
+| entretien de l'assistant | 2 appels par recherche | la qualité du modèle |
+
+La colonne « payé par » montre ce qui servira **réellement**, pas ce qui a été coché : si le
+compte choisi est indisponible, la ligne le dit et nomme le remplaçant.
+
+L'abonnement n'est pas proposé pour le tri ni la traduction, et `ai.route()` le refuserait
+même si le formulaire était contourné. Raison mesurée : un appel `claude -p` de 9 jetons a
+créé **23 703 jetons de cache** — le contexte de Claude Code voyage avec chaque appel. Deux
+appels par recherche, aucun problème ; des centaines par jour épuiseraient les limites de
+débit en minutes.
+
 ### Deux comptes, bascule automatique
 
 Le bloc « compte de repli » prend un **second** service avec sa propre clé. Quand le
@@ -200,6 +220,11 @@ abonnement : ni clé d'API, ni plafond entamé.
 Ce n'est pas le jeton OAuth de Claude Code recyclé en clé d'API — c'est le binaire lancé tel
 quel. Le texte des annonces arrive par `stdin`, jamais dans la ligne de commande, et
 `--allowedTools ""` coupe tous les outils.
+
+Vérifié en bout de chaîne : avec `authMethod: claude.ai`, un appel d'entretien passe, et la
+ligne de dépense enregistrée est `claude-code/claude-sonnet-5 … cost_usd 0.0`. Ni la clé
+d'API ni le crédit OpenRouter ne bougent. Le `total_cost_usd` que Claude Code affiche est
+une valeur **théorique** (ce que ça aurait coûté à l'API), pas un débit.
 
 **Uniquement l'entretien**, délibérément : 2 appels par recherche passent sans problème,
 mais le tri et la traduction en font des centaines par jour — ils tomberaient sur les
@@ -322,7 +347,7 @@ automatique ne reçoive pas une page de connexion.
 | `net.py` | sortie HTTP pour les API (OpenRouter, OSRM, GeoNames) |
 | `reference.py` | prix neuf de référence |
 | `sellers.py` | réputation vendeur, surtout anti-arnaque sur Facebook |
-| `test_core.py` | 81 suites, sans réseau |
+| `test_core.py` | 85 suites, sans réseau |
 
 Pas d'ORM : les requêtes sont courtes et écrites à la main. `db.MIGRATIONS` ajoute les
 colonnes venues après coup — SQLite n'a pas de `ADD COLUMN IF NOT EXISTS`.

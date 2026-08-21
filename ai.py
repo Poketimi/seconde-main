@@ -152,7 +152,38 @@ _tier_down = {}
 TIER_COOLDOWN = 900         # 15 min
 DRY = (401, 402, 403, 429)  # clé refusée, plus de crédit, quota épuisé
 
-def tiers(cli_ok=False):
+def route(job):
+    """(compte, modèle) réglés pour ce travail. Vides = comportement par défaut."""
+    r = (getattr(config, "JOB_ROUTES", None) or {}).get(job) or {}
+    acct = r.get("account") or ""
+    if acct == "abonnement" and job in config.JOBS_NO_SUBSCRIPTION:
+        acct = ""            # garde-fou : jamais le travail en masse sur l'abonnement
+    return acct, (r.get("model") or "")
+
+def job_table():
+    """Ce que chaque travail utilise réellement — compte, modèle, et qui paie.
+
+    Résolu, pas déclaré : si le compte choisi est indisponible, la ligne dit ce
+    qui servira à la place plutôt que ce qui a été coché.
+    """
+    rows = []
+    for job, meta in config.JOBS.items():
+        acct, model = route(job)
+        live = tiers(cli_ok=(acct == "abonnement"), prefer=acct)
+        used = live[0] if live else None
+        sub = bool(used and used["provider"] == "claude_cli")
+        rows.append({
+            "job": job, "label": meta["label"], "hint": meta["hint"],
+            "account": acct, "model": model,
+            "sub_allowed": job not in config.JOBS_NO_SUBSCRIPTION,
+            "resolved_account": used["name"] if used else None,
+            "resolved_model": (model or (used["model"] if used else None)),
+            "paid_by": ("abonnement" if sub else
+                        (f"clé {used['provider']}" if used else "aucun compte")),
+        })
+    return rows
+
+def tiers(cli_ok=False, prefer=""):
     """Les comptes utilisables, dans l'ordre, celui en panne exclu.
 
     `cli_ok` ouvre l'abonnement Claude Code, qui passe devant les autres :
@@ -160,7 +191,7 @@ def tiers(cli_ok=False):
     en masse ne parte jamais dedans.
     """
     out = []
-    if cli_ok and config.CLAUDE_CLI and cli_available() \
+    if (cli_ok or prefer == "abonnement") and config.CLAUDE_CLI and cli_available() \
             and time.time() >= _tier_down.get("abonnement", 0):
         out.append({"name": "abonnement", "provider": "claude_cli", "base": "cli",
                     "key": "", "model": config.CLAUDE_CLI_MODEL})
@@ -175,6 +206,8 @@ def tiers(cli_ok=False):
             continue
         out.append({"name": name, "provider": prov, "base": base,
                     "key": key, "model": model})
+    if prefer:                       # le compte choisi passe devant, sans exclure les autres
+        out.sort(key=lambda t: 0 if t["name"] == prefer else 1)
     return out
 
 def tier_status():
@@ -190,7 +223,7 @@ def tier_status():
             for n, p, m in rows if p]
 
 def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=None,
-         cli=False):
+         cli=False, job=None):
     """Cached chat completion. Returns text, or None if unavailable/failed.
 
     `models` overrides the fallback chain (used by smart_chat for the
@@ -201,7 +234,10 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
     parked for a quarter of an hour and the second takes over, so a dry
     account degrades the app instead of stopping it.
     """
+    acct, want_model = route(job) if job else ("", "")
     chain = list(models) if models else list(config.AI_FALLBACKS)
+    if want_model:
+        chain = [want_model] + [m for m in chain if m != want_model]
     key = hashlib.sha256(
         f"{chain[0]}|{system}|{user}|{temperature}".encode()).hexdigest()
     row = db.cache_get("ai_cache", key)
@@ -210,13 +246,21 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
     if not available():
         return None
     seen, r, used = [], None, None
-    for tier in tiers(cli_ok=cli):
+    for tier in tiers(cli_ok=cli, prefer=acct):
         if tier["provider"] == "claude_cli":
-            txt, info = _cli_chat(system, user, tier["model"])
+            txt, info = _cli_chat(system, user, want_model or tier["model"])
             if txt:
                 if on_usage:
                     try:
-                        on_usage(f"claude-code/{tier['model']}", {})
+                        # Rien n'est facturé : c'est l'abonnement. Les jetons sont
+                        # réels, le coût est 0, et la valeur que Claude Code
+                        # annonce (ce que ça aurait coûté à l'API) est notée pour
+                        # que l'écart soit visible plutôt que supposé.
+                        u = info if isinstance(info, dict) else {}
+                        on_usage(f"claude-code/{want_model or tier['model']}",
+                                 {"prompt_tokens": u.get("input_tokens") or 0,
+                                  "completion_tokens": u.get("output_tokens") or 0,
+                                  "cost": 0.0})
                     except Exception:
                         pass
                 db.run("INSERT OR REPLACE INTO ai_cache(k,v,created_at) VALUES(?,?,?)",
@@ -230,7 +274,8 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
             continue
         # le compte de repli a son propre modèle : la chaîne du principal ne
         # veut rien dire chez lui
-        want = dict.fromkeys(chain if tier["name"] == "principal" else [tier["model"]])
+        want = dict.fromkeys([want_model] if want_model else
+                             (chain if tier["name"] == "principal" else [tier["model"]]))
         headers = {"Content-Type": "application/json",
                    **({"Authorization": f"Bearer {tier['key']}"} if tier["key"] else {})}
         url = f"{tier['base']}/chat/completions"
@@ -349,15 +394,15 @@ def _listing_brief(l, i):
             "price": l.get("price"), "cur": l.get("currency"),
             "cat": l.get("category")}
 
-def analyse(listings, request_text=None, budget=None):
+def analyse(listings, request_text=None, budget=None, job="tri"):
     """Batch-classify listings. Returns {index: result dict}.
 
     Works with no API key: returns {} and callers fall back to rules.
     """
     system = SYSTEM + (SCORE_EXTRA.format(req=request_text) if request_text else "")
-    return run_batches(system, listings, budget=budget)
+    return run_batches(system, listings, budget=budget, job=job)
 
-def run_batches(system, listings, brief=None, budget=None, batch=None):
+def run_batches(system, listings, brief=None, budget=None, batch=None, job="tri"):
     """Run one prompt over many listings, batched and in parallel.
 
     Shared by classification and translation: same batching, same
@@ -373,13 +418,13 @@ def run_batches(system, listings, brief=None, budget=None, batch=None):
     out = {}
     starts = list(range(0, len(listings), batch))
     if len(starts) == 1:
-        _analyse_chunk(system, listings, 0, len(listings), out, brief=brief)
+        _analyse_chunk(system, listings, 0, len(listings), out, brief=brief, job=job)
         return out
     # Each call costs ~9s regardless of size, so the batches are latency-bound,
     # not CPU-bound: running them together turns minutes into seconds.
     with ThreadPoolExecutor(max_workers=min(PARALLEL, len(starts))) as pool:
         futures = [pool.submit(_analyse_chunk, system, listings, st,
-                               min(batch, len(listings) - st), out, brief=brief)
+                               min(batch, len(listings) - st), out, brief=brief, job=job)
                    for st in starts]
         for f in futures:
             f.result()
@@ -396,7 +441,7 @@ MAX_TOKENS = 12000
 # a lot between runs, so treat these as rough, not exact.
 PARALLEL = int(__import__("os").environ.get("AI_PARALLEL", 8))
 
-def _analyse_chunk(system, listings, start, size, out, depth=0, brief=None):
+def _analyse_chunk(system, listings, start, size, out, depth=0, brief=None, job="tri"):
     """Classify listings[start:start+size]; halve the batch if the reply is cut off."""
     brief = brief or _listing_brief
     chunk = listings[start:start + size]
@@ -404,7 +449,7 @@ def _analyse_chunk(system, listings, start, size, out, depth=0, brief=None):
         return
     payload = json.dumps([brief(l, start + k) for k, l in enumerate(chunk)],
                          ensure_ascii=False)
-    data = _parse_json(chat(system, payload, max_tokens=MAX_TOKENS))
+    data = _parse_json(chat(system, payload, max_tokens=MAX_TOKENS, job=job))
     results = (data or {}).get("results") or []
     for res in results:
         if isinstance(res, dict) and isinstance(res.get("i"), int):
@@ -414,8 +459,8 @@ def _analyse_chunk(system, listings, start, size, out, depth=0, brief=None):
     # would just repeat the failure, so only split on a genuine short answer.
     if data is not None and len(results) < size and size > 1 and depth < 3:
         half = size // 2
-        _analyse_chunk(system, listings, start, half, out, depth + 1, brief)
-        _analyse_chunk(system, listings, start + half, size - half, out, depth + 1, brief)
+        _analyse_chunk(system, listings, start, half, out, depth + 1, brief, job)
+        _analyse_chunk(system, listings, start + half, size - half, out, depth + 1, brief, job)
 
 # The model drifts off the vocabulary it was given -- one run produced
 # bicycle / bike / bicycles as three categories for the same thing, which
@@ -520,6 +565,7 @@ def smart_chat(system, user, purpose, max_tokens=6000):
     elif over:
         print(f"  [ia] plafond {config.SMART_BUDGET_USD}$ atteint — repli sur {config.AI_MODEL}")
     return chat(system, user, models=chain, max_tokens=max_tokens, cli=True,
+                job="entretien",
                 on_usage=lambda m, u: record_spend(m, u, purpose)), over
 
 # --- the interview ---------------------------------------------------------
