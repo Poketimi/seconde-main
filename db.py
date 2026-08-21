@@ -229,7 +229,11 @@ MIGRATIONS = [("users", "is_admin", "INTEGER DEFAULT 0"),
               # empreinte du lot déjà recommandé : ne pas repayer un appel
               # quand rien n'a changé depuis le dernier cycle
               ("searches", "reco_key", "TEXT"),
-              ("searches", "reco_summary", "TEXT")]      # source language, detected once
+              ("searches", "reco_summary", "TEXT"),
+              # ajustement proposé (jamais appliqué tout seul) + empreinte de la
+              # configuration pour laquelle il a été calculé
+              ("searches", "tweak_json", "TEXT"),
+              ("searches", "tweak_key", "TEXT")]      # source language, detected once
 
 def init():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)

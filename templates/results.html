@@ -25,6 +25,24 @@
   {% endfor %}
 </div>
 
+{% if tweak %}
+<div class="tweak">
+  <div class="tweak-head">Un réglage à revoir ?</div>
+  <p class="dim">{{ tweak.pourquoi }}</p>
+  <table class="kv">
+    {% if tweak.query %}<tr><td>Requête</td><td><s class="faint">{{ s.query }}</s> → <b>{{ tweak.query }}</b></td></tr>{% endif %}
+    {% if tweak.price_max %}<tr><td>Prix max</td><td><s class="faint">{{ s.price_max|money('') }}</s> → <b>{{ tweak.price_max|money('') }}</b></td></tr>{% endif %}
+    {% if tweak.exclude_kw %}<tr><td>Mots exclus</td><td><s class="faint">{{ s.exclude_kw or '—' }}</s> → <b>{{ tweak.exclude_kw }}</b></td></tr>{% endif %}
+  </table>
+  <form method="post" action="{{ url_for('apply_tweak', sid=s.id) }}" class="row">
+    <button class="cta" name="action" value="appliquer">Appliquer et relancer</button>
+    <button name="action" value="ignorer">Ignorer</button>
+  </form>
+  <p class="faint">Rien n'est modifié tant que tu ne cliques pas. Tes anciennes valeurs
+    sont affichées barrées ci-dessus.</p>
+</div>
+{% endif %}
+
 {% if picks %}
 <div class="picks">
   <div class="picks-head">À regarder en premier

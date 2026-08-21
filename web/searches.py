@@ -129,13 +129,17 @@ def results(sid):
                     ORDER BY m.reco_rank""", (sid,))
     reco_summary = (db.q("SELECT reco_summary FROM searches WHERE id=?", (sid,),
                          one=True) or {})["reco_summary"] if picks else None
+    try:
+        tweak = json.loads(s["tweak_json"]) if s["tweak_json"] else None
+    except (ValueError, TypeError):
+        tweak = None
     db.run("UPDATE matches SET seen=1 WHERE search_id=?", (sid,))
     log = db.q("SELECT * FROM runlog WHERE search_id=? ORDER BY ts DESC LIMIT 12", (sid,))
     srcs = [r["source"] for r in db.q("""SELECT DISTINCT l.source FROM matches m
                 JOIN listings l ON l.id=m.listing_id WHERE m.search_id=? ORDER BY l.source""", (sid,))]
     return render_template("results.html", s=s, rows=rows, log=log,
                            origins=json.loads(s["origins"] or "[]"),
-                           picks=picks, reco_summary=reco_summary,
+                           picks=picks, reco_summary=reco_summary, tweak=tweak,
                            sort=request.args.get("sort", "score"),
                            srcs=srcs, f=f, nfilters=len(where))
 
@@ -182,3 +186,33 @@ def delete(sid):
 def toggle(sid):
     db.run("UPDATE searches SET active=1-active WHERE id=?", (sid,))
     return redirect(request.referrer or url_for("index"))
+
+
+@app.post("/search/<int:sid>/tweak")
+def apply_tweak(sid):
+    """Applique l'ajustement proposé — sur clic, jamais tout seul.
+
+    L'app ne réécrit pas une recherche que tu as réglée : elle propose, montre
+    l'avant/après, et attend. « Ignorer » efface la proposition sans rien
+    changer.
+    """
+    s = owned_or_404(sid)
+    try:
+        t = json.loads(s["tweak_json"] or "null") or {}
+    except ValueError:
+        t = {}
+    if request.form.get("action") == "ignorer" or not t:
+        db.run("UPDATE searches SET tweak_json=NULL WHERE id=?", (sid,))
+        flash("Proposition écartée.")
+        return redirect(url_for("results", sid=sid))
+    changed = []
+    for k in ai.reco.TWEAKABLE:
+        if k in t:
+            db.run(f"UPDATE searches SET {k}=? WHERE id=?", (t[k], sid))
+            changed.append(f"{k} : {s[k]} → {t[k]}")
+    # la proposition est consommée, et le lot doit être rejugé avec les
+    # nouveaux critères
+    db.run("UPDATE searches SET tweak_json=NULL, reco_key=NULL WHERE id=?", (sid,))
+    flash("Recherche ajustée — " + " · ".join(changed) + ". Nouveau scan lancé.")
+    threading.Thread(target=_run_one, args=(sid,), daemon=True).start()
+    return redirect(url_for("results", sid=sid))

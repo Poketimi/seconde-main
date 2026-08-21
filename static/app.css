@@ -399,3 +399,10 @@ button[data-busy]{opacity:.6}
 .pick-title{font-weight:550;font-size:.92rem}
 .pick-meta{font-size:.8rem;color:var(--dim)}
 .pick-why{font-size:.86rem;color:var(--fg);margin-top:.2rem}
+
+/* ---- ajustement proposé ---- */
+.tweak{border:1px solid var(--gold);background:var(--gold-soft);border-radius:11px;
+  padding:.8rem;margin:.6rem 0 1rem}
+.tweak-head{font-weight:580;font-size:.92rem;color:var(--gold)}
+.tweak .kv{margin:.5rem 0}
+.tweak s{text-decoration:line-through}

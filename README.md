@@ -231,6 +231,28 @@ de lui-même :
 > L'annonce à 420 CHF est 70 % sous la médiane mais vient d'un compte créé en 2026 sans
 > note, donc à éviter sans vérification.
 
+### Et si le réglage lui-même clochait ?
+
+Le même appel répond à une seconde question : **la recherche est-elle bien réglée ?** Le
+modèle ne propose un ajustement que s'il voit une raison précise dans les données — toutes
+les annonces butent contre le plafond, une seule variante remonte, un mot exclu écarte
+visiblement de bonnes annonces. Pas de raison visible, pas de proposition : jamais
+« élargissons au cas où ».
+
+Quand une recherche ne remonte **rien du tout**, il n'y a pas de lot à commenter : elle est
+diagnostiquée à partir de sa configuration seule. Sur une recherche volontairement
+sabotée — « Peak Design Everyday Backpack 30L V2 charcoal 2023 », plafond 80, exclusions
+« occasion,usé » — il a relevé les trois défauts d'un coup, dont l'exclusion qui écartait
+précisément les annonces visées.
+
+**Rien n'est appliqué tout seul.** La proposition s'affiche avec l'avant barré et l'après en
+gras ; « Appliquer et relancer » modifie et relance le scan, « Ignorer » efface la
+proposition. L'app ne réécrit pas une recherche que tu as réglée à la main.
+
+Un ajustement ne peut toucher que **requête, prix max et mots exclus** — origines, sources
+et type de vendeur restent ta décision — et ne peut qu'**élargir** : un plafond proposé à la
+baisse est rejeté d'office.
+
 **Un appel par scan, et seulement si le lot a bougé.** Une empreinte des annonces et de
 leurs prix est gardée : un cycle qui ne trouve rien de neuf ne coûte rien. Le modèle se
 règle comme les autres dans le tableau de `/reglages` (travail « reco »). Un identifiant

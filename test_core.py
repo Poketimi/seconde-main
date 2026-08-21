@@ -2189,6 +2189,94 @@ def test_job_routing_reaches_the_subscription_without_an_api_key():
     assert "usable = tiers(" in src and "if not available():" not in src, \
         "la disponibilité est décidée avant de consulter le routage du travail"
 
+def test_a_tweak_is_proposed_never_applied():
+    """L'app ne réécrit pas une recherche réglée à la main : elle propose."""
+    from ai import reco as R
+    import app
+    s, ids = _reco_fixture()
+    before = dict(s)
+    real = R.chat
+    R.chat = lambda sys_, usr, **kw: json.dumps({
+        "picks": [], "resume": "",
+        "ajustement": {"query": "velo", "price_max": 2500,
+                       "pourquoi": "le plafond bloque tout"}})
+    try:
+        R.recommend(s, force=True)
+    finally:
+        R.chat = real
+    after = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+    assert after["query"] == before["query"], "la recherche a été réécrite sans clic"
+    assert after["price_max"] == before["price_max"]
+    assert json.loads(after["tweak_json"])["query"] == "velo"
+
+    c = app.app.test_client()
+    html = c.get(f"/search/{s['id']}").get_data(as_text=True)
+    assert "Un réglage à revoir" in html and "Appliquer et relancer" in html
+
+    # « Ignorer » n'applique rien
+    c.post(f"/search/{s['id']}/tweak", data={"action": "ignorer"})
+    after = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+    assert after["tweak_json"] is None and after["query"] == before["query"]
+
+def test_a_tweak_only_widens_and_only_touches_allowed_fields():
+    from ai import reco as R
+    s, _ = _reco_fixture()
+    d = dict(s)
+    assert R._clean_tweak({"price_max": 10}, d) is None, "un plafond abaissé n'élargit rien"
+    assert R._clean_tweak({"query": d["query"]}, d) is None, "identique = pas un ajustement"
+    assert R._clean_tweak({"sources": '["x"]', "origins": "[]"}, d) is None, \
+        "un champ hors périmètre a été accepté"
+    assert R._clean_tweak({}, d) is None and R._clean_tweak(None, d) is None
+    # vider un champ déjà vide n'est pas un ajustement...
+    assert R._clean_tweak({"exclude_kw": ""}, d) is None
+    # ...mais vider une exclusion qui existe en est un : c'est ainsi qu'on
+    # retire un mot qui écarte justement ce qu'on cherche (« occasion »).
+    d2 = dict(d, exclude_kw="occasion,usé")
+    ok = R._clean_tweak({"exclude_kw": "", "pourquoi": "l'exclusion écarte la cible"}, d2)
+    assert ok and ok["exclude_kw"] == "", "impossible de proposer de vider une exclusion"
+    assert R._trim("x" * 500, 400).endswith("…") and len(R._trim("x" * 500, 400)) <= 401
+
+def test_applying_a_tweak_changes_the_search_and_clears_the_proposal():
+    from ai import reco as R
+    import app
+    s, _ = _reco_fixture()
+    db.run("""UPDATE searches SET tweak_json=? WHERE id=?""",
+           (json.dumps({"query": "velo", "price_max": 2500, "pourquoi": "x"}), s["id"]))
+    real = engine.run_search
+    engine.run_search = lambda *a, **k: (0, 0)      # pas de scan réel dans un test
+    try:
+        app.app.test_client().post(f"/search/{s['id']}/tweak",
+                                   data={"action": "appliquer"})
+    finally:
+        engine.run_search = real
+    after = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+    assert after["query"] == "velo" and after["price_max"] == 2500
+    assert after["tweak_json"] is None, "la proposition doit être consommée"
+    assert after["reco_key"] is None, "le lot doit être rejugé avec les nouveaux critères"
+
+def test_empty_search_gets_a_diagnosis_once_per_configuration():
+    """Zéro annonce : diagnostiquer, mais pas redemander à chaque cycle."""
+    from ai import reco as R
+    s, ids = _reco_fixture()
+    db.run("DELETE FROM matches WHERE search_id=?", (s["id"],))
+    s = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+    calls = []
+    real = R.chat
+    R.chat = lambda sys_, usr, **kw: (calls.append(usr), json.dumps(
+        {"ajustement": {"query": "velo", "pourquoi": "trop précis"}}))[1]
+    try:
+        assert R.recommend(s, force=True) == 0
+        assert len(calls) == 1, "un lot vide doit être diagnostiqué"
+        assert "requete" in calls[0], "le diagnostic doit voir la configuration"
+        fresh = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+        R.recommend(fresh)
+        assert len(calls) == 1, "même configuration : ne pas redemander à chaque cycle"
+        db.run("UPDATE searches SET query='autre chose' WHERE id=?", (s["id"],))
+        R.recommend(db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True))
+        assert len(calls) == 2, "une requête modifiée doit relancer le diagnostic"
+    finally:
+        R.chat = real
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

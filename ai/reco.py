@@ -40,9 +40,42 @@ sort du lot, renvoie une liste vide. N'invente jamais un argument qui ne
 figure pas dans les données fournies — pas de « très demandé », pas de « rare »,
 rien que tu ne puisses lire ci-dessous.
 
+Deuxième question, indépendante : **la recherche elle-même est-elle bien réglée ?**
+Propose un ajustement SEULEMENT si tu vois dans les données une raison précise :
+
+- toutes les annonces butent contre le plafond de prix -> le plafond est trop bas ;
+- une seule variante remonte alors que la requête en couvre plusieurs -> requête trop étroite ;
+- un mot exclu écarte visiblement de bonnes annonces -> exclusion trop large ;
+- le lot est minuscule alors que l'objet est courant -> requête trop spécifique.
+
+Pas de raison visible = pas d'ajustement. Ne propose jamais d'élargir « au cas où ».
+
 Réponds en JSON uniquement :
 {{"picks":[{{"id":<id de l'annonce>,"pourquoi":"une phrase, concrète, en français"}}],
-  "resume":"une phrase sur l'ensemble du lot, ou \\"\\" si rien à dire"}}"""
+  "resume":"une phrase sur l'ensemble du lot, ou \\"\\" si rien à dire",
+  "ajustement":{{"query":"<nouvelle requête ou null>",
+                "price_max":<nombre ou null>,
+                "exclude_kw":"<nouvelle liste ou null>",
+                "pourquoi":"une phrase disant ce que ça devrait débloquer"}}}}
+"ajustement" vaut null s'il n'y a rien à changer."""
+
+EMPTY_SYSTEM = """Une recherche d'occasion ne remonte AUCUNE annonce. Dis pourquoi,
+et propose un réglage plus large.
+
+Causes possibles, par ordre de fréquence : requête trop spécifique (référence
+exacte, année, variante), plafond de prix sous le marché, mot exclu trop large,
+objet réellement rare.
+
+Reste proche de l'intention : élargir « Peak Design Everyday 30L V2 » en
+« Peak Design 30L » est utile, en « sac à dos » ne l'est pas — ça noierait
+l'utilisateur.
+
+Réponds en JSON uniquement :
+{"ajustement":{"query":"<requête élargie ou null>",
+               "price_max":<nombre ou null>,
+               "exclude_kw":"<nouvelle liste ou null>",
+               "pourquoi":"une phrase : ce qui coince, et ce que ça débloque"}}
+Renvoie "ajustement": null si la recherche te paraît juste et l'objet simplement rare."""
 
 
 def _brief(m):
@@ -92,6 +125,80 @@ def fingerprint(rows):
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
+# Champs qu'un ajustement a le droit de toucher. Tout le reste — origines,
+# sources, type de vendeur — reste la décision de l'utilisateur.
+TWEAKABLE = ("query", "price_max", "exclude_kw")
+
+
+def _clean_tweak(raw, search):
+    """Garde un ajustement s'il change vraiment quelque chose de permis."""
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    _MISSING = object()
+    for k in TWEAKABLE:
+        v = raw.get(k, _MISSING)
+        # None = « rien à changer ». "" sur un champ texte = « vider ce champ »,
+        # ce qui est un ajustement légitime : c'est ainsi qu'on retire une
+        # exclusion qui écarte justement ce qu'on cherche.
+        if v is _MISSING or v is None or v == []:
+            continue
+        if k == "price_max":
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                continue
+            # un plafond revu à la baisse n'élargit rien : c'est une erreur
+            if search["price_max"] and v <= float(search["price_max"]):
+                continue
+        else:
+            v = str(v).strip()
+            if v == (search[k] or "").strip():
+                continue                 # identique : ce n'est pas un ajustement
+        out[k] = v
+    if not out:
+        return None
+    out["pourquoi"] = _trim(raw.get("pourquoi"), 400)
+    return out
+
+
+def _trim(txt, n):
+    """Couper sur un mot, pas au milieu : « devrait faire rem » n'aide personne."""
+    t = str(txt or "").strip()
+    if len(t) <= n:
+        return t
+    cut = t[:n]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > n * 0.6 else cut).rstrip(" ,;") + "…"
+
+
+def _save_tweak(search, raw, key):
+    t = _clean_tweak(raw, search)
+    db.run("UPDATE searches SET tweak_json=?, tweak_key=? WHERE id=?",
+           (json.dumps(t, ensure_ascii=False) if t else None, key, search["id"]))
+    return t
+
+
+def suggest_when_empty(search, force=False):
+    """Aucune annonce : proposer un réglage plus large. Retourne l'ajustement.
+
+    Jamais appliqué tout seul — l'utilisateur voit l'avant/après et décide.
+    """
+    key = "empty:" + hashlib.sha256(
+        f"{search['query']}|{search['price_max']}|{search['exclude_kw']}".encode()
+    ).hexdigest()[:16]
+    if not force and search["tweak_key"] == key:
+        return None                  # déjà proposé pour cette configuration
+    payload = json.dumps({"requete": search["query"],
+                          "prix_max": search["price_max"],
+                          "mots_exclus": search["exclude_kw"],
+                          "reference": search["reference"]}, ensure_ascii=False)
+    data = _parse_json(chat(EMPTY_SYSTEM, payload, job="reco", max_tokens=500))
+    if data is None:
+        return None
+    return _save_tweak(search, data.get("ajustement"), key)
+
+
 def recommend(search, force=False):
     """Écrit les recommandations sur les matchs. Retourne le nombre retenu.
 
@@ -99,6 +206,11 @@ def recommend(search, force=False):
     trouve rien de neuf ne doit rien coûter.
     """
     rows = candidates(search["id"])
+    if not rows:
+        # Rien du tout : c'est l'autre question — la recherche est-elle bien
+        # réglée ? Un lot vide ne se commente pas, il se diagnostique.
+        suggest_when_empty(search, force=force)
+        return 0
     if len(rows) < 2:
         return 0                     # rien à comparer, rien à conseiller
     fp = fingerprint(rows)
@@ -126,6 +238,7 @@ def recommend(search, force=False):
                (rank, str(p.get("pourquoi") or "")[:400], search["id"], p["id"]))
     db.run("UPDATE searches SET reco_key=?, reco_summary=? WHERE id=?",
            (fp, str(data.get("resume") or "")[:300], search["id"]))
+    _save_tweak(search, data.get("ajustement"), fp)
     return len(picks)
 
 
