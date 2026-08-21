@@ -118,13 +118,18 @@ def search(source, query, spec=None):
     if rows:
         LAST_STATUS[source] = ("ok", f"{len(rows)} annonces")
     elif source in NEEDS_BROWSER:
+        # « locked » et « unavailable » sont des pannes DE NOTRE CÔTÉ : un
+        # Chromium tué en plein scan (redémarrage de l'app), ou deux recherches
+        # qui veulent le même profil. Les compter comme « error » mettait
+        # Facebook en retrait exponentiel alors que le site n'avait rien
+        # refusé — d'où des heures sans annonces après chaque redémarrage.
         reason = browser.last_reason()
         LAST_STATUS[source] = ({"blocked": "blocked", "login": "login",
-                                "locked": "error", "unavailable": "error"}.get(reason, "empty"),
+                                "locked": "busy", "unavailable": "busy"}.get(reason, "empty"),
                                {"blocked": "contrôle de sécurité",
                                 "login": "connexion requise",
-                                "locked": "profil navigateur déjà ouvert",
-                                "unavailable": "navigateur indisponible"}.get(reason, ""))
+                                "locked": "profil navigateur occupé — réessai au prochain cycle",
+                                "unavailable": "navigateur indisponible ici"}.get(reason, ""))
     elif net.LAST_BLOCKED.get("blocked"):
         LAST_STATUS[source] = ("blocked", "contrôle de sécurité")
     else:

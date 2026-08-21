@@ -1656,6 +1656,32 @@ def test_module_selfchecks_do_not_touch_live_settings():
     assert db.q("SELECT 1 FROM settings WHERE k='CLAUDE_CLI'", one=True) is None, \
         "the self-check left a row behind where there was none"
 
+def test_local_browser_failure_is_not_a_site_outage():
+    """Killing Chromium mid-scan must not put Facebook in backoff.
+
+    Restarting the app kills the browser context, and every in-flight Facebook
+    search failed at once with TargetClosedError / "profil déjà ouvert". Those
+    were recorded as `error`, which triggers exponential backoff -- so the app
+    punished the site for our own restart and Facebook went missing for hours.
+    """
+    assert "busy" not in engine.BACKOFF_STATUSES, "une panne locale met la source en retrait"
+    for bad in ("blocked", "login", "error"):
+        assert bad in engine.BACKOFF_STATUSES, f"{bad} devrait mettre en retrait"
+
+    db.run("DELETE FROM source_health WHERE source='fake_browser'")
+    engine.record_health("fake_browser", "ok", "30 annonces")
+    for _ in range(3):
+        engine.record_health("fake_browser", "busy", "profil navigateur occupé")
+    r = db.q("SELECT status, fail_streak FROM source_health WHERE source='fake_browser'",
+             one=True)
+    assert r["fail_streak"] == 0, f"busy a incrémenté la série d'échecs : {r['fail_streak']}"
+    assert engine.in_backoff("fake_browser") == 0, "busy a mis la source en retrait"
+
+    # un vrai refus, lui, doit bien mettre en retrait
+    engine.record_health("fake_browser", "blocked", "contrôle de sécurité")
+    assert engine.in_backoff("fake_browser") > 0, "un refus du site doit mettre en retrait"
+    db.run("DELETE FROM source_health WHERE source='fake_browser'")
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

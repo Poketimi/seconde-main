@@ -72,14 +72,21 @@ def commit_cycle_health():
     CYCLE_TALLY.clear()
 
 STATUS_LABEL = {"ok": "OK", "empty": "aucun résultat", "blocked": "bloqué",
-                "login": "connexion requise", "error": "erreur"}
+                "login": "connexion requise", "error": "erreur",
+                "busy": "navigateur occupé"}
+
+# Ce qui met une source en retrait : un refus du site, jamais une panne locale.
+# « busy » (Chromium tué, profil déjà pris) se réessaie au cycle suivant.
+BACKOFF_STATUSES = ("blocked", "login", "error")
 
 def record_health(source, status, detail=""):
     """Persist per-source state and alert when a working source goes down."""
     now = time.time()
     prev = db.q("SELECT * FROM source_health WHERE source=?", (source,), one=True)
     was_ok = bool(prev) and prev["status"] == "ok"
-    streak = 0 if status == "ok" else ((prev["fail_streak"] if prev else 0) + 1)
+    # « busy » n'incrémente pas la série d'échecs : sinon un redémarrage de
+    # l'app suffisait à faire monter le compteur et à allonger le retrait.
+    streak = 0 if status in ("ok", "busy") else ((prev["fail_streak"] if prev else 0) + 1)
     changed = now if (not prev or prev["status"] != status) else prev["changed_at"]
     db.run("""INSERT INTO source_health(source,status,detail,fail_streak,last_ok,last_run,changed_at)
               VALUES(?,?,?,?,?,?,?)
@@ -108,7 +115,7 @@ def in_backoff(source):
     # Only back off on an actual refusal. "empty" usually means the query had no
     # results -- backing off on it paused ricardo for 20 minutes while it was
     # happily returning 60 listings.
-    if r["status"] not in ("blocked", "login", "error"):
+    if r["status"] not in BACKOFF_STATUSES:
         return 0
     wait = min(config.BACKOFF_MAX, config.BACKOFF_BASE * (2 ** min(r["fail_streak"] - 1, 8)))
     left = (r["last_run"] + wait) - time.time()
