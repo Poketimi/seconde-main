@@ -44,8 +44,11 @@ def assist():
 @app.route("/api/assist/status")
 def assist_status():
     tok, st = _state()
+    started = st.get("started") or 0
     return jsonify({"working": st.get("working"), "error": st.get("error"),
-                    "ready": not st.get("working")})
+                    "ready": not st.get("working"),
+                    "step": st.get("step"),
+                    "elapsed": int(time.time() - started) if started else 0})
 
 @app.route("/assist/questions")
 def assist_questions():
@@ -63,7 +66,8 @@ def assist_questions():
         questions, cached = st["pending"], False
         cat = st.get("cat") or ""
     elif not st.get("q_ready"):
-        def work(state):
+        def work(state, step):
+            step("Lecture de ta demande")
             cat, questions, cached = ai.ask_questions(state["query"])
             state["cat"] = cat
             state["pending"] = questions if questions else None
@@ -122,11 +126,17 @@ def assist_answers():
     st["pending"] = None
     _save_state(tok, st)
 
-    def work(state):
+    def work(state, step):
+        # Les deux étapes ont des durées très différentes — ~35 s pour le
+        # modèle, quelques secondes pour la vérification. Le dire.
+        step("Le modèle choisit les modèles concrets à chercher")
         crit = ai.build_criteria(state["query"], state["answers"],
                                  profile.get_map(cat), known_sources=list(sources.ADAPTERS))
+        state["crit"] = crit
         # the model has no web access, so its suggestions are checked before display
-        crit["other_markets"] = sources.verify_markets(crit.get("other_markets") or [])
+        if crit.get("other_markets"):
+            step("Vérification des marchés proposés")
+            crit["other_markets"] = sources.verify_markets(crit["other_markets"])
         state["crit"] = crit
     _run_bg(tok, "criteres", work)
     return redirect(url_for("assist_review"))

@@ -1847,6 +1847,31 @@ def test_settings_page_does_not_shell_out_on_every_render():
     assert len(calls) <= 1, f"{len(calls)} processus lancés au lieu d'un"
     assert ai.client.AUTH_TTL >= 30
 
+def test_assistant_wait_reports_real_progress():
+    """La liste d'étapes se cochait toute seule toutes les 3 s.
+
+    Sur 45 s d'attente, un faux progrès est pire que pas de progrès : il ment
+    sur ce qui se passe et ne dit rien quand ça coince.
+    """
+    import inspect
+    tpl = pathlib.Path("templates/assist_wait.html").read_text()
+    assert "j.step" in tpl, "l'étape réelle n'est pas affichée"
+    assert "j.elapsed" in tpl, "le temps vient du client, pas du serveur"
+    assert "92" in tpl, "la barre pourrait prétendre avoir fini"
+    assert "j.error" in tpl, "un échec laisserait tourner le spinner"
+
+    # le sondage doit exposer étape et durée
+    import app
+    j = app.app.test_client().get("/api/assist/status").get_json()
+    for k in ("working", "ready", "step", "elapsed", "error"):
+        assert k in j, f"{k} absent du sondage"
+
+    # et les jobs doivent réellement annoncer leur étape
+    from web import assistant as A
+    src = inspect.getsource(A)
+    assert src.count("def work(state, step)") == 2, "les jobs ne rapportent pas d'étape"
+    assert 'step("' in src
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

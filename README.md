@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 88 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 89 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -296,6 +296,16 @@ termine au chargement, et un bouton déjà envoyé se désactive — mais après
 valeur ne part pas. Elle se coupe sous `prefers-reduced-motion`, et s'efface au retour
 arrière depuis le cache.
 
+**L'assistant, mesuré.** Questions ~9 s, construction de la recherche ~35 s par la clé
+d'API et ~57 s par l'abonnement — le binaire `claude` traîne son contexte à chaque appel.
+L'écran d'attente affiche donc l'**étape réelle** rapportée par le job, le temps écoulé
+compté par le serveur, et la durée habituelle, pour qu'une attente normale ne passe pas
+pour une panne. La barre sature à 92 % : elle ne prétend jamais avoir fini avant que ce
+soit vrai, et un échec s'affiche au lieu de laisser tourner le spinner.
+
+Avant, la liste d'étapes se cochait toute seule toutes les 3 s. Sur 45 s d'attente, un faux
+progrès est pire que pas de progrès.
+
 **Ce qui rendait l'app lente.** `/reglages` mettait **1,3 s** : elle lançait
 `claude auth status` — un processus, ~350 ms — deux fois par rendu, pour une information
 qui ne change qu'à la connexion. Mise en cache une minute, invalidée dès qu'une connexion
@@ -383,7 +393,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 88 suites, sans réseau |
+| `test_core.py` | 89 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

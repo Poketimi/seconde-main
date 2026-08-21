@@ -90,19 +90,40 @@ def _run_one(sid):
             print("run error", e)
 
 def _run_bg(tok, stage, fn):
-    """Do slow model work off the request, so the page can show progress."""
+    """Do slow model work off the request, so the page can show progress.
+
+    `fn` reçoit l'état et, s'il l'accepte, un `step(texte)` pour dire où il en
+    est. L'écran d'attente affichait une liste qui cochait toute seule toutes
+    les 3 s : joli, mais faux — et sur 45 s d'attente, un faux progrès est pire
+    que pas de progrès.
+    """
     def job():
         _, st = _state_by_token(tok)
+
+        def step(label):
+            _, cur = _state_by_token(tok)
+            cur["step"] = label
+            cur["working"] = stage
+            _save_state(tok, cur)
+            st["step"] = label
+
         try:
-            fn(st)
+            import inspect
+            if len(inspect.signature(fn).parameters) > 1:
+                fn(st, step)
+            else:
+                fn(st)
             st["error"] = None
         except Exception as e:
             st["error"] = f"{type(e).__name__}: {e}"
             print("assist job failed:", e)
         st["working"] = None
+        st["step"] = None
         _save_state(tok, st)
     _, st = _state_by_token(tok)
     st["working"] = stage
+    st["step"] = None
+    st["started"] = time.time()
     _save_state(tok, st)
     threading.Thread(target=job, daemon=True).start()
 

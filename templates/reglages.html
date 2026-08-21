@@ -145,6 +145,10 @@ redémarrer : le changement s'applique à la requête suivante.</p>
       </tr>
       {% endfor %}
     </table></div>
+    <p class="faint"><b>L'abonnement est plus lent.</b> Mesuré sur la même construction de
+      recherche : <b>57 s</b> par <code>claude -p</code> contre <b>33 s</b> par la clé
+      d'API — chaque appel du binaire traîne son contexte. Gratuit mais lent, ou ~0,01 $
+      par recherche et deux fois plus rapide : à toi de choisir, ligne par ligne.</p>
     <p class="faint">L'abonnement n'est pas proposé pour le tri ni la traduction, et un
       garde-fou côté code le refuserait de toute façon : <b>mesuré</b>, chaque appel
       <code>claude -p</code> traîne ~24 000 jetons de contexte Claude Code. Deux appels par

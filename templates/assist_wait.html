@@ -1,47 +1,69 @@
 {% extends "base.html" %}{% block body %}
-{% set steps = {'questions': ["Lecture de ta demande",
-                              "Choix des questions qui changent vraiment le choix",
-                              "Mise en forme"],
-                'relance':   ["Relecture de tes réponses",
-                              "Recherche des précisions utiles"],
-                'criteres':  ["Traduction en critères concrets",
-                              "Sélection des modèles à chercher",
-                              "Vérification des marchés proposés"]} %}
+{# Durées mesurées, pas devinées : questions ~9 s, critères ~35 s par la clé
+   d'API et ~57 s par l'abonnement. Les afficher évite qu'une attente normale
+   passe pour une panne. #}
+{% set typical = {'questions': 10, 'relance': 10, 'criteres': 45} %}
 <div class="waiting">
   <div class="spin big"></div>
   <h1>{{ {'questions':'Préparation des questions',
           'relance':'On précise un point',
           'criteres':'Construction de la recherche'}.get(stage, 'Un instant') }}</h1>
   <p class="sub">« {{ query }} »</p>
-  <ul class="steps">
-    {% for s in steps.get(stage, ["Traitement"]) %}<li>{{ s }}</li>{% endfor %}
-  </ul>
-  <p class="faint" id="elapsed">quelques secondes…</p>
+
+  <div class="wbar"><i id="wfill"></i></div>
+  <p class="wstep" id="wstep">Démarrage…</p>
+  <p class="faint" id="elapsed"></p>
+
   <noscript><p><a class="btn" href="{{ next }}">Rafraîchir</a></p></noscript>
 </div>
 <script>
 (function () {
-  const started = Date.now();
+  const TYPICAL = {{ typical.get(stage, 30) }};
+  const fill = document.getElementById('wfill');
+  const stepEl = document.getElementById('wstep');
   const el = document.getElementById('elapsed');
-  const items = [...document.querySelectorAll('.steps li')];
-  let i = 0;
-  setInterval(() => {                       // light progress feel, no fake bar
-    if (i < items.length) items[i++].classList.add('done');
-  }, 3000);
-  setInterval(() => {
-    const s = Math.round((Date.now() - started) / 1000);
-    el.textContent = s > 45 ? s + 's — le modèle est lent, on attend encore'
-                            : s + 's';
-  }, 1000);
+  const started = Date.now();
+  let done = false;
+
+  // La barre suit le temps écoulé rapporté à la durée habituelle, et sature à
+  // 92 % : elle ne prétend jamais avoir fini avant que ce soit vrai.
+  function paint(secs, step) {
+    const p = Math.min(92, (secs / TYPICAL) * 92);
+    fill.style.width = p + '%';
+    if (step) stepEl.textContent = step;
+    el.textContent = secs < TYPICAL
+      ? secs + 's — habituellement ~' + TYPICAL + 's'
+      : secs + 's — plus long que d’habitude, on attend encore';
+  }
+
   async function poll() {
+    if (done) return;
+    let secs = Math.round((Date.now() - started) / 1000);
     try {
       const r = await fetch('{{ url_for("assist_status") }}', {cache: 'no-store'});
       const j = await r.json();
-      if (j.ready) location.href = '{{ next }}';
-    } catch (e) { /* on réessaie */ }
+      if (j.elapsed) secs = j.elapsed;          // le serveur fait foi
+      if (j.error) {
+        done = true;
+        stepEl.textContent = 'Échec : ' + j.error;
+        fill.style.background = 'var(--warn)';
+        return;
+      }
+      if (j.ready) {
+        done = true;
+        fill.style.width = '100%';
+        stepEl.textContent = 'Prêt';
+        setTimeout(() => location.href = '{{ next }}', 200);
+        return;
+      }
+      paint(secs, j.step);
+    } catch (e) {
+      paint(secs, null);                        // serveur qui redémarre
+    }
   }
-  setInterval(poll, 1500);
+  paint(0, null);
   poll();
+  setInterval(poll, 1200);
 })();
 </script>
 {% endblock %}

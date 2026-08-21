@@ -378,3 +378,12 @@ select.lang.more{min-height:0;padding:.2rem 1.7rem .2rem .6rem;font-size:.78rem;
   transition:width .35s ease-out;box-shadow:0 0 8px var(--acc)}
 @media(prefers-reduced-motion:reduce){#prog i{transition:none}}
 button[data-busy]{opacity:.6}
+
+/* ---- attente de l'assistant ---- */
+.wbar{height:4px;border-radius:99px;background:var(--line2);overflow:hidden;
+  max-width:26rem;margin:1.1rem auto .6rem}
+.wbar i{display:block;height:100%;width:0;background:var(--acc);
+  transition:width .8s ease-out}
+@media(prefers-reduced-motion:reduce){.wbar i{transition:none}}
+.wstep{font-size:.9rem;color:var(--fg);margin:.2rem 0}
+.spin.big{width:1.6rem;height:1.6rem;border-width:3px}
