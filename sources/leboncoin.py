@@ -26,6 +26,18 @@ except ImportError:                       # absent : on le dit, on ne casse rien
 _client = None
 PER_PAGE = 35
 MAX_PAGES = 6                             # garde-fou : ~200 annonces par cycle
+PAGE_DELAY = 4.0                          # entre deux pages, mesuré nécessaire
+
+# leboncoin est derrière DataDome. Quelques requêtes rapprochées suffisent à
+# se faire signaler — constaté en enchaînant quatre recherches sans pause.
+# Un refus n'est pas une erreur à réessayer : c'est un « non » qui doit mettre
+# la source en retrait, sinon on transforme un blocage temporaire en définitif.
+BLOCKED_HINTS = ("datadome", "blocked", "suspicious", "403", "forbidden")
+
+# leboncoin -> vocabulaire de l'app. Un état inconnu vaut None, pas une
+# supposition : `condition_min` filtre dessus.
+CONDITION = {"neuf": "new", "commeneuf": "like_new", "tresbonetat": "good",
+             "bonetat": "good", "etatsatisfaisant": "fair", "pourpieces": "parts"}
 
 
 def client():
@@ -87,8 +99,11 @@ def leboncoin(query, spec=None):
         try:
             result = client().search(page=page, **kwargs)
         except Exception as e:
-            # une exception vaut « panne » : retrait exponentiel + notification
-            LAST_STATUS["leboncoin"] = ("error", f"{type(e).__name__}: {e}"[:200])
+            blocked = any(h in f"{type(e).__name__} {e}".lower() for h in BLOCKED_HINTS)
+            LAST_STATUS["leboncoin"] = (
+                "blocked" if blocked else "error",
+                ("DataDome nous a signalés — on se met en retrait"
+                 if blocked else f"{type(e).__name__}: {e}"[:200]))
             return rows
         ads = [a for a in (result.ads or []) if getattr(a, "url", None)]
         for a in ads:
@@ -100,6 +115,7 @@ def leboncoin(query, spec=None):
             break
         if page >= getattr(result, "max_pages", MAX_PAGES):
             break
+        time.sleep(PAGE_DELAY)     # ne pas enchaîner : c'est ce qui déclenche DataDome
     return rows
 
 
@@ -115,12 +131,31 @@ def _ts(iso):
     return None
 
 
+def _attr(ad, key, label=False):
+    at = (getattr(ad, "attributes", None) or {}).get(key)
+    if at is None:
+        return None
+    return getattr(at, "value_label", None) if label else getattr(at, "value", None)
+
+
+# Ce qui n'a rien à faire sur une fiche : identifiants internes, URLs d'avatar,
+# drapeaux d'interface. Le reste est de l'information sur l'objet.
+_ATTR_SKIP = {"profile_picture_url", "purchase_cta_visible", "negotiation_cta_visible",
+              "is_bundleable", "is_eligible_to_warranty", "country_isocode3166",
+              "shippable", "condition"}
+
 def _attrs(ad):
-    """Les attributs de catégorie, aplatis en {clé: libellé lisible}."""
+    """Les attributs de catégorie, aplatis en {libellé: valeur lisible}.
+
+    `shippable` et `condition` en sortent : ils ont leur propre colonne, et les
+    répéter ici ferait deux sources de vérité pour la même chose.
+    """
     out = {}
     for key, at in (getattr(ad, "attributes", None) or {}).items():
+        if key in _ATTR_SKIP:
+            continue
         val = getattr(at, "value_label", None) or getattr(at, "value", None)
-        if val not in (None, ""):
+        if val not in (None, "") and not str(val).startswith("http"):
             out[getattr(at, "key_label", None) or key] = val
     return out
 
@@ -149,6 +184,10 @@ def _row(ad):
         "currency": "EUR",
         "price_type": "fixed",
         "category": getattr(ad, "category_name", None),
+        # « shippable » est bien exposé, dans les attributs : pas besoin de
+        # deviner depuis la description. Ça compte — une annonce livrable
+        # court-circuite le filtre distance, et leboncoin est en France.
+        "condition": CONDITION.get(str(_attr(ad, "condition") or "").lower()),
         # lbc ne livre le type de vendeur qu'en chargeant ad.user : ne rien inventer
         "seller_type": None,
         "seller_name": None,
@@ -157,7 +196,7 @@ def _row(ad):
         "postal_code": g(loc, "zipcode"),          # suffit : geo.py résout hors ligne
         "country": (g(loc, "country") or "FR").upper()[:2],
         "lat": g(loc, "lat"), "lon": g(loc, "lng"),
-        "shipping": 0,                             # non exposé sur l'annonce
+        "shipping": 1 if str(_attr(ad, "shippable")).lower() == "true" else 0,
         "image": images[0] if images else None,
         "images": json.dumps(images[:8]),          # JSON, pas une liste
         "posted_at": _ts(getattr(ad, "first_publication_date", None)),

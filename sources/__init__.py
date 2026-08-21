@@ -19,7 +19,10 @@ from .util import (_next_data, _flight_blob, json_objects_with, find_lists,
                    _gallery_fb, _gallery_smg, _gallery_ricardo)
 from .smg import anibis, tutti, _smg_search
 from .ricardo import ricardo
-from .leboncoin import leboncoin
+# `from . import` et non `from .leboncoin import leboncoin` : la seconde
+# forme masque le module derrière la fonction, et `sources.leboncoin`
+# ne désigne plus le fichier. L'import suffit à inscrire l'adaptateur.
+from . import leboncoin
 from .facebook import fb_marketplace, generic, BROWSER_SEARCH
 from .mail import DENIED_BY_OPERATOR
 

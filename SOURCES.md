@@ -200,6 +200,13 @@ dernier passage sans jamais parcourir le corpus entier.
 
 ## 8. Les pièges déjà rencontrés
 
+- **Cherche le champ avant de deviner.** « Est-ce que le vendeur envoie ? » avait
+  l'air absent de l'API leboncoin — il est dans `attributes["shippable"]`, avec
+  l'état, le transporteur et la taille du colis. Scanner la description aurait
+  produit un résultat approximatif là où la donnée exacte était disponible. Et
+  ce champ-là est structurant : une annonce livrable **court-circuite tout le
+  filtre distance**.
+
 - **Séparateurs de milliers.** `2 100 CHF` avec une espace insécable ou une
   apostrophe typographique s'est enregistré en `2.00`. Réutilise `sources._num`.
 - **Ne devine pas un prix** depuis le texte autour : « CAAD13 1 250 € » s'est lu

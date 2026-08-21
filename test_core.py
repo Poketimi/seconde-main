@@ -1731,6 +1731,53 @@ def test_container_listens_where_it_is_told():
     for leak in ("data/", ".env"):
         assert leak in ign, f"{leak} finirait dans l'image"
 
+def test_leboncoin_reads_shipping_and_condition_from_attributes():
+    """`shippable` est exposé par l'API : ne pas le deviner depuis la description.
+
+    Ça compte : une annonce livrable court-circuite entièrement le filtre
+    distance, et leboncoin est en France. La lire faux, c'est soit perdre tout
+    ce qui est livrable, soit garder ce qui ne l'est pas.
+    """
+    from sources import leboncoin as lbcmod
+
+    class At:
+        def __init__(self, v, lbl=None, key_label=None):
+            self.value, self.value_label, self.key_label = v, lbl or v, key_label
+    class Loc:
+        city, zipcode, lat, lng, country, label = "Lyon", "69003", 45.75, 4.85, "FR", None
+    class Ad:
+        id, url, subject, body, price = 7, "https://www.leboncoin.fr/ad/x/7", "Sac", "", 120.0
+        images, category_name, first_publication_date = [], "Sacs", "2026-08-21 09:00:00"
+        location, _user_id, brand, status, category_id = Loc(), "u1", None, "active", "1"
+        attributes = {"shippable": At("true"),
+                      "condition": At("tresbonetat", "Très bon état"),
+                      "shipping_type": At("mondial_relay"),
+                      "estimated_parcel_size": At("S"),
+                      "profile_picture_url": At("https://img/x.jpg")}
+
+    r = lbcmod._row(Ad())
+    assert r["shipping"] == 1, "une annonce livrable a été lue comme non livrable"
+    assert r["condition"] == "good", r["condition"]
+    at = json.loads(r["attrs"])
+    assert "mondial_relay" in at.values(), at
+    assert not any(str(v).startswith("http") for v in at.values()), "URL d'avatar recopiée"
+    assert "shippable" not in at and "condition" not in at, "doublon avec les colonnes"
+
+    Ad.attributes = {"shippable": At("false")}
+    assert lbcmod._row(Ad())["shipping"] == 0
+    Ad.attributes = {}
+    r = lbcmod._row(Ad())
+    assert r["shipping"] == 0 and r["condition"] is None, "un état inconnu doit rester None"
+
+def test_leboncoin_treats_datadome_as_a_refusal():
+    """Un blocage n'est pas une erreur à réessayer : il doit mettre en retrait."""
+    from sources import leboncoin as lbcmod
+    for msg in ("Access blocked by Datadome: your activity was flagged as suspicious",
+                "403 Forbidden"):
+        assert any(h in msg.lower() for h in lbcmod.BLOCKED_HINTS), msg
+    assert "blocked" in engine.BACKOFF_STATUSES, "un blocage doit mettre la source en retrait"
+    assert lbcmod.PAGE_DELAY >= 2, "enchaîner les pages est ce qui déclenche DataDome"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
