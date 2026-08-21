@@ -5,6 +5,14 @@ Un adaptateur est une fonction `(query, spec) -> [dict]`, inscrite par
 et traduit un résultat vide en une raison lisible. Voir SOURCES.md.
 """
 import net, browser
+# probe_market lit une page inconnue : il lui faut les extracteurs partagés.
+# Ils manquaient depuis la découpe en paquet — le module s'importait très bien,
+# et l'erreur ne sortait qu'à l'appel, dans l'assistant.
+from .util import _next_data, find_lists, jsonld_listings
+# probe_market lit une page inconnue : il lui faut les extracteurs partagés.
+# Ils manquaient depuis la découpe en paquet — le module se chargeait, et
+# l'erreur n'apparaissait qu'à l'appel, dans l'assistant.
+
 
 ADAPTERS = {}
 LAST_STATUS = {}          # source -> (status, detail)

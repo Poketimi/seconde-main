@@ -2036,6 +2036,46 @@ def test_ricardo_pickup_only_is_not_shipping():
     assert f({"shipping": [{"key": "get_by_buyer", "cost": 0}]}) == 0
     assert f({"shipping": []}) is None and f({}) is None and f(None) is None
 
+def test_no_module_uses_a_name_it_never_imported():
+    """Un nom manquant ne se voit qu'à l'appel, parfois des heures plus tard.
+
+    La découpe en paquets a déplacé probe_market dans sources/registry.py sans
+    ses extracteurs : le module s'importait très bien, et l'assistant plantait
+    sur « NameError: jsonld_listings » au moment de vérifier un marché.
+    """
+    import ast, builtins, pathlib as P
+    faults = []
+    for f in sorted(P.Path(".").glob("*/*.py")) + sorted(P.Path(".").glob("*.py")):
+        if f.name.startswith("test_"):
+            continue
+        tree = ast.parse(f.read_text())
+        # noms que Python fournit à tout module sans import
+        defined = set(dir(builtins)) | {"__file__", "__name__", "__doc__",
+                                        "__package__", "__spec__", "__loader__"}
+        used = set()
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Import):
+                defined |= {a.asname or a.name.split(".")[0] for a in n.names}
+            elif isinstance(n, ast.ImportFrom):
+                defined |= {a.asname or a.name for a in n.names}
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(n.name)
+            elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                defined.add(n.id)
+            elif isinstance(n, ast.arg):
+                defined.add(n.arg)
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                defined.add(n.name)
+            elif isinstance(n, (ast.Global, ast.Nonlocal)):
+                defined |= set(n.names)
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+                used.add(n.id)
+        missing = sorted(used - defined)
+        if missing:
+            faults.append(f"{f}: {missing}")
+    assert not faults, "noms utilisés sans import : " + " | ".join(faults)
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
