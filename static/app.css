@@ -387,3 +387,15 @@ button[data-busy]{opacity:.6}
 @media(prefers-reduced-motion:reduce){.wbar i{transition:none}}
 .wstep{font-size:.9rem;color:var(--fg);margin:.2rem 0}
 .spin.big{width:1.6rem;height:1.6rem;border-width:3px}
+
+/* ---- recommandations ---- */
+.picks{border:1px solid var(--acc);background:var(--acc-soft);border-radius:11px;
+  padding:.8rem;margin:.6rem 0 1rem;display:flex;flex-direction:column;gap:.5rem}
+.picks-head{font-weight:580;font-size:.92rem}
+.pick{display:flex;gap:.7rem;align-items:flex-start;text-decoration:none;
+  color:var(--fg);background:var(--panel);border-radius:9px;padding:.6rem}
+.pick img{width:3.4rem;height:3.4rem;object-fit:cover;border-radius:7px;flex:0 0 auto}
+.pick-body{min-width:0}
+.pick-title{font-weight:550;font-size:.92rem}
+.pick-meta{font-size:.8rem;color:var(--dim)}
+.pick-why{font-size:.86rem;color:var(--fg);margin-top:.2rem}

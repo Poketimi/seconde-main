@@ -120,12 +120,22 @@ def results(sid):
                     FROM matches m JOIN listings l ON l.id=m.listing_id
                     LEFT JOIN products p ON p.id=l.product_id
                     WHERE m.search_id=?{clause} ORDER BY {order}""", (sid, *args))
+    # Les recommandations sont indépendantes des filtres : elles portent sur
+    # le lot entier, pas sur ce qui est affiché à l'écran.
+    picks = db.q("""SELECT m.reco_rank, m.reco_why, m.listing_id,
+                           l.title, l.price, l.currency, l.image, l.source
+                    FROM matches m JOIN listings l ON l.id = m.listing_id
+                    WHERE m.search_id=? AND m.reco_rank IS NOT NULL
+                    ORDER BY m.reco_rank""", (sid,))
+    reco_summary = (db.q("SELECT reco_summary FROM searches WHERE id=?", (sid,),
+                         one=True) or {})["reco_summary"] if picks else None
     db.run("UPDATE matches SET seen=1 WHERE search_id=?", (sid,))
     log = db.q("SELECT * FROM runlog WHERE search_id=? ORDER BY ts DESC LIMIT 12", (sid,))
     srcs = [r["source"] for r in db.q("""SELECT DISTINCT l.source FROM matches m
                 JOIN listings l ON l.id=m.listing_id WHERE m.search_id=? ORDER BY l.source""", (sid,))]
     return render_template("results.html", s=s, rows=rows, log=log,
                            origins=json.loads(s["origins"] or "[]"),
+                           picks=picks, reco_summary=reco_summary,
                            sort=request.args.get("sort", "score"),
                            srcs=srcs, f=f, nfilters=len(where))
 

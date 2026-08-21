@@ -212,6 +212,31 @@ compte quand même contre le plafond.
 
 ---
 
+## Recommandations
+
+Le score de tri répond à « est-ce bien la chose demandée ». Une fois le lot jugé, un
+quatrième travail répond à l'autre question : **parmi les annonces qui correspondent,
+lesquelles sont de bonnes affaires ?**
+
+Les signaux existent déjà — médiane du produit, écart à cette médiane, état, ancienneté et
+note du vendeur, trajet, fin d'enchère, fraîcheur. Le modèle les lit et désigne **au plus
+trois** annonces, chacune avec une phrase concrète, plus un résumé du lot. Il a le droit de
+n'en désigner **aucune** : trente annonces médiocres doivent donner zéro recommandation,
+pas trois enthousiasmes fabriqués.
+
+Il doit aussi dire ce qui l'inquiète. Sur un jeu d'essai comprenant un vélo à 420 CHF (70 %
+sous la médiane, compte vendeur créé cette année, sans note), il l'a écarté et l'a signalé
+de lui-même :
+
+> L'annonce à 420 CHF est 70 % sous la médiane mais vient d'un compte créé en 2026 sans
+> note, donc à éviter sans vérification.
+
+**Un appel par scan, et seulement si le lot a bougé.** Une empreinte des annonces et de
+leurs prix est gardée : un cycle qui ne trouve rien de neuf ne coûte rien. Le modèle se
+règle comme les autres dans le tableau de `/reglages` (travail « reco »). Un identifiant
+qu'il inventerait est écarté, et un modèle muet n'efface jamais la recommandation
+précédente.
+
 ## L'assistant
 
 Pour « une paire de ski » ou « une moto », personne ne sait quoi taper. L'assistant pose 4 à
@@ -432,7 +457,7 @@ marcher tels quels.
 | `app.py` | 12 lignes : construit l'app et lance la boucle |
 | `web/` | l'interface — `searches` · `items` · `assistant` · `admin` · `api` · `helpers` |
 | `sources/` | un fichier par site — `smg` (anibis+tutti) · `ricardo` · `facebook` · `mail` · `registry` · `util` |
-| `ai/` | `client` (comptes, routage, appel) · `budget` · `classify` · `assistant` · `checks` |
+| `ai/` | `client` (comptes, routage, appel) · `budget` · `classify` · `assistant` · `reco` · `checks` |
 | `engine/` | `match` · `store` · `health` · `scan` · `checks` |
 | `crawler.py` | acquisition identifiée : robots.txt, délais, cache conditionnel |
 | `browser.py` | Chromium connecté, pour Facebook uniquement |

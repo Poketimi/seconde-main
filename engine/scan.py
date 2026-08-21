@@ -148,6 +148,16 @@ def _run_search(s, ai_budget=None):
 
     db.run("UPDATE searches SET last_run=? WHERE id=?", (time.time(), s["id"]))
 
+    # Une fois le lot jugé et stable, désigner ce qui sort du lot. Ne coûte un
+    # appel que si les annonces ont bougé depuis la dernière fois.
+    try:
+        fresh = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+        n = ai.recommend(fresh)
+        if n:
+            print(f"  [{s['name']}] {n} recommandation(s)")
+    except Exception:
+        traceback.print_exc()
+
     fresh = db.q("SELECT m.id, l.title, l.price, l.currency, m.travel_minutes, m.travel_origin"
                  " FROM matches m JOIN listings l ON l.id=m.listing_id"
                  " WHERE m.search_id=? AND m.notified=0 ORDER BY m.score DESC", (s["id"],))

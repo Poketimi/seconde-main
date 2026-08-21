@@ -235,10 +235,14 @@ def chat(system, user, temperature=0.0, max_tokens=8000, models=None, on_usage=N
     row = db.cache_get("ai_cache", key)
     if row:
         return row["v"]
-    if not available():
+    # La disponibilité dépend du travail : `available()` ne regarde ni le
+    # routage ni l'abonnement, donc un travail dirigé vers `abonnement`
+    # échouait silencieusement dès qu'aucune clé d'API n'était configurée.
+    usable = tiers(cli_ok=cli, prefer=acct)
+    if cooling_down() or not usable:
         return None
     seen, r, used = [], None, None
-    for tier in tiers(cli_ok=cli, prefer=acct):
+    for tier in usable:
         if tier["provider"] == "claude_cli":
             txt, info = _cli_chat(system, user, want_model or tier["model"])
             if txt:

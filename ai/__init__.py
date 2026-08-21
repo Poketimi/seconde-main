@@ -19,6 +19,7 @@ Découpé par métier :
     budget.py     crédit réel, registre de dépense, plafond
     classify.py   tri et normalisation des annonces (le travail en masse)
     assistant.py  entretien : questions fermées, critères, modèles concrets
+    reco.py       quelles annonces valent le coup d'œil, et pourquoi
     checks.py     auto-vérifications
 
 Tout est ré-exporté ici, donc `import ai; ai.analyse(...)` marche comme avant.
@@ -30,9 +31,12 @@ from .budget import *          # noqa: F401,F403
 from .classify import *        # noqa: F401,F403
 from .assistant import *       # noqa: F401,F403
 from .checks import *          # noqa: F401,F403
+# le module s'appelle `reco`, la fonction `recommend` : sans ça, le nom
+# ré-exporté masquerait le module et `ai.reco` ne serait plus le fichier
+from .reco import recommend, candidates, fingerprint       # noqa: F401
 # Les noms privés ne traversent pas `import *` ; ceux-ci sont utilisés par les
 # tests et par d'autres modules.
 from .client import _cli_chat, _parse_json, _slug, _tier_down, _is_local  # noqa: F401
 from .classify import _listing_brief, _analyse_chunk                     # noqa: F401
 from .assistant import _valid_questions                                  # noqa: F401
-from . import client, budget, classify, assistant, checks                # noqa: F401
+from . import client, budget, classify, assistant, checks, reco          # noqa: F401

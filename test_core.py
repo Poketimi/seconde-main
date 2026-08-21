@@ -2076,6 +2076,119 @@ def test_no_module_uses_a_name_it_never_imported():
             faults.append(f"{f}: {missing}")
     assert not faults, "noms utilisés sans import : " + " | ".join(faults)
 
+
+# --- recommandations -------------------------------------------------------
+
+def _reco_fixture():
+    """Quatre annonces du même produit, dont une trop belle pour être vraie.
+
+    Ne supprime QUE ses propres lignes : une première version vidait `matches`
+    et `listings`, ce qui faisait échouer les tests suivants sans rapport.
+    """
+    old = db.q("SELECT id FROM searches WHERE name='reco-test'", one=True)
+    if old:
+        db.run("DELETE FROM matches WHERE search_id=?", (old["id"],))
+        db.run("DELETE FROM searches WHERE id=?", (old["id"],))
+    db.run("DELETE FROM listings WHERE url LIKE 'https://reco/%'")
+    sid = db.run("""INSERT INTO searches(name,query,price_max,origins,sources,active,created_at)
+                    VALUES('reco-test','velo de course',1500,'[]','[]',1,?)""", (time.time(),))
+    pid = ai.upsert_product({"canonical_name": "Reco Test Bike", "brand": "Reco"})
+    db.run("UPDATE products SET price_median=1400, n_listings=9 WHERE id=?", (pid,))
+    ids = []
+    for i, (title, price, delta) in enumerate(
+            [("Bonne affaire", 850, -39), ("Prix marché", 1380, -1),
+             ("Trop beau", 420, -70), ("Cher", 1450, 4)]):
+        lid = db.run("""INSERT INTO listings(url,source,title,price,currency,product_id,
+                        active,first_seen) VALUES(?,?,?,?,'CHF',?,1,?)""",
+                     (f"https://reco/{i}", "fake", title, price, pid, time.time()))
+        db.run("""INSERT INTO matches(search_id,listing_id,score,deal_delta,created_at)
+                  VALUES(?,?,90,?,?)""", (sid, lid, delta, time.time()))
+        ids.append(lid)
+    return db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True), ids
+
+def test_recommendations_are_written_and_bounded():
+    from ai import reco as R
+    s, ids = _reco_fixture()
+    real = R.chat
+    R.chat = lambda sys_, usr, **kw: json.dumps({
+        "picks": [{"id": ids[0], "pourquoi": "39% sous la médiane"},
+                  {"id": ids[1], "pourquoi": "au prix du marché"},
+                  {"id": ids[3], "pourquoi": "cher"},
+                  {"id": ids[2], "pourquoi": "quatrième"},
+                  {"id": 999999, "pourquoi": "annonce inexistante"}],
+        "resume": "lot correct"})
+    try:
+        n = R.recommend(s, force=True)
+    finally:
+        R.chat = real
+    assert n == R.MAX_PICKS, f"{n} retenues au lieu de {R.MAX_PICKS} maximum"
+    rows = db.q("""SELECT listing_id, reco_rank FROM matches
+                   WHERE search_id=? AND reco_rank IS NOT NULL ORDER BY reco_rank""",
+                (s["id"],))
+    assert [r["listing_id"] for r in rows] == ids[:2] + [ids[3]]
+    assert [r["reco_rank"] for r in rows] == [1, 2, 3]
+    assert not db.q("SELECT 1 FROM matches WHERE listing_id=999999", one=True), \
+        "un id inventé par le modèle a été écrit en base"
+
+def test_recommendations_cost_nothing_when_nothing_changed():
+    """Un scan qui ne trouve rien de neuf ne doit pas rappeler le modèle."""
+    from ai import reco as R
+    s, ids = _reco_fixture()
+    calls = []
+    real = R.chat
+    R.chat = lambda sys_, usr, **kw: (calls.append(1),
+                                      json.dumps({"picks": [], "resume": ""}))[1]
+    try:
+        R.recommend(s, force=True)
+        assert len(calls) == 1
+        fresh = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+        R.recommend(fresh)
+        assert len(calls) == 1, "le lot n'a pas bougé, le modèle a pourtant été rappelé"
+        # un prix qui change rouvre le lot
+        db.run("UPDATE listings SET price=799 WHERE id=?", (ids[0],))
+        R.recommend(fresh)
+        assert len(calls) == 2, "un changement de prix doit relancer la recommandation"
+    finally:
+        R.chat = real
+
+def test_recommendations_may_be_empty():
+    """Trente annonces médiocres doivent donner zéro recommandation."""
+    from ai import reco as R
+    s, ids = _reco_fixture()
+    real = R.chat
+    R.chat = lambda sys_, usr, **kw: json.dumps({"picks": [], "resume": "rien ne sort du lot"})
+    try:
+        assert R.recommend(s, force=True) == 0
+    finally:
+        R.chat = real
+    assert not db.q("SELECT 1 FROM matches WHERE search_id=? AND reco_rank IS NOT NULL",
+                    (s["id"],), one=True), "des recommandations fabriquées"
+
+def test_recommendation_survives_a_silent_model():
+    """Pas de clé, ou réponse illisible : ne rien écraser, réessayer plus tard."""
+    from ai import reco as R
+    s, ids = _reco_fixture()
+    real = R.chat
+    R.chat = lambda sys_, usr, **kw: json.dumps({"picks": [{"id": ids[0], "pourquoi": "ok"}]})
+    try:
+        R.recommend(s, force=True)
+        R.chat = lambda sys_, usr, **kw: None          # modèle muet
+        fresh = db.q("SELECT * FROM searches WHERE id=?", (s["id"],), one=True)
+        db.run("UPDATE listings SET price=700 WHERE id=?", (ids[0],))
+        assert R.recommend(fresh) == 0
+    finally:
+        R.chat = real
+    kept = db.q("SELECT reco_why FROM matches WHERE listing_id=?", (ids[0],), one=True)
+    assert kept["reco_why"] == "ok", "un modèle muet a effacé la recommandation précédente"
+
+def test_job_routing_reaches_the_subscription_without_an_api_key():
+    """`available()` ignorait le routage : un travail sur l'abonnement mourait
+    dès qu'aucune clé d'API n'était configurée."""
+    import inspect
+    src = inspect.getsource(ai.client.chat)
+    assert "usable = tiers(" in src and "if not available():" not in src, \
+        "la disponibilité est décidée avant de consulter le routage du travail"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

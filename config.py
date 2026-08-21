@@ -105,6 +105,8 @@ JOBS = {
                    "hint": "un appel par lot de 5 annonces, sorties longues"},
     "entretien":  {"label": "Entretien de l'assistant",
                    "hint": "2 appels par recherche — c'est là qu'un bon modèle paie"},
+    "reco":       {"label": "Recommandations",
+                   "hint": "un appel par scan qui a changé quelque chose"},
 }
 ACCOUNTS = {
     "principal":  "Compte principal (clé d'API)",

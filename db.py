@@ -222,7 +222,14 @@ MIGRATIONS = [("users", "is_admin", "INTEGER DEFAULT 0"),
               ("products", "ref_url", "TEXT"),
               ("products", "ref_source", "TEXT"),
               ("products", "ref_checked", "REAL"),
-              ("listings", "lang", "TEXT")]      # source language, detected once
+              ("listings", "lang", "TEXT"),
+              # recommandation : quelle annonce vaut le coup d'œil, et pourquoi
+              ("matches", "reco_rank", "INTEGER"),
+              ("matches", "reco_why", "TEXT"),
+              # empreinte du lot déjà recommandé : ne pas repayer un appel
+              # quand rien n'a changé depuis le dernier cycle
+              ("searches", "reco_key", "TEXT"),
+              ("searches", "reco_summary", "TEXT")]      # source language, detected once
 
 def init():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
