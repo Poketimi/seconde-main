@@ -18,11 +18,17 @@ redémarrer : le changement s'applique à la requête suivante.</p>
 {% if found %}
 <div class="connect">
   {% for f in found %}
-  <form method="post" action="{{ url_for('reglages_connecter') }}" class="ccard here">
+  <form method="post" action="{{ url_for('reglages_connecter') }}"
+        class="ccard {{ 'here' if f.live }}">
     <input type="hidden" name="which" value="{{ f.id }}">
-    <div class="ctitle">{{ f.label }} <span class="pill ok"><i class="dot"></i>détecté</span></div>
+    <div class="ctitle">{{ f.label }}
+      <span class="pill {{ 'ok' if f.live else 'login' }}"><i class="dot"></i>{{ f.state }}</span></div>
     <p class="faint">{{ f.note }}</p>
-    <button class="cta">Brancher</button>
+    {% if f.live %}
+      <a class="btn" href="{{ url_for('connexions') }}">Gérer</a>
+    {% else %}
+      <button class="cta">Brancher</button>
+    {% endif %}
   </form>
   {% endfor %}
 </div>

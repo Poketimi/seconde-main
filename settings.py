@@ -121,9 +121,19 @@ def detect():
     import shutil
     found = []
     if shutil.which("claude"):
-        found.append({"id": "claude_cli", "label": "Abonnement Claude Code",
-                      "note": "Le binaire `claude` est installé. Sert l'entretien de "
-                              "l'assistant, sur ton abonnement, sans clé ni budget."})
+        import ai
+        st = ai.cli_auth() or {}
+        live = bool(st.get("loggedIn")) and config.CLAUDE_CLI
+        found.append({
+            "id": "claude_cli", "label": "Abonnement Claude Code",
+            # « détecté » avec un bouton Brancher alors que c'est déjà branché,
+            # c'est le même mensonge que l'état « actif » sur la page Crawler.
+            "state": "branché" if live else
+                     ("session expirée" if not st.get("loggedIn") else "installé, éteint"),
+            "live": live,
+            "note": ("Sert l'entretien de l'assistant sur ton abonnement — ni clé d'API "
+                     "ni budget entamé." + ("" if live else
+                     " Va dans Connexions pour l'activer."))})
     if _reachable("http://localhost:11434/api/tags"):
         found.append({"id": "ollama", "label": "Ollama (déjà lancé)",
                       "note": "Un serveur Ollama répond sur cette machine. "
@@ -184,10 +194,21 @@ def demo():
     assert _coerce("SMART_BUDGET_USD", "12,5") == 12.5
     assert _coerce("SMART_BUDGET_USD", "abc") is None
     assert _coerce("CLAUDE_CLI", "1") is True and _coerce("CLAUDE_CLI", "0") is False
-    save({"CLAUDE_CLI": "1"}); assert config.CLAUDE_CLI is True
-    save({"CLAUDE_CLI": "0"}); assert config.CLAUDE_CLI is False, \
-        "une case décochée doit pouvoir éteindre l'option"
-    db.run("DELETE FROM settings WHERE k='CLAUDE_CLI'")
+    # Ce test écrit dans la vraie table de réglages. Sans cette sauvegarde,
+    # lancer `python3 settings.py` effaçait le réglage de l'utilisateur --
+    # c'est comme ça que CLAUDE_CLI a disparu une fois.
+    before = db.q("SELECT v FROM settings WHERE k='CLAUDE_CLI'", one=True)
+    try:
+        save({"CLAUDE_CLI": "1"}); assert config.CLAUDE_CLI is True
+        save({"CLAUDE_CLI": "0"}); assert config.CLAUDE_CLI is False, \
+            "une case décochée doit pouvoir éteindre l'option"
+    finally:
+        if before:
+            db.run("INSERT OR REPLACE INTO settings(k,v,updated_at) VALUES('CLAUDE_CLI',?,?)",
+                   (before["v"], time.time()))
+        else:
+            db.run("DELETE FROM settings WHERE k='CLAUDE_CLI'")
+        load()
     before = config.AI_MODEL
     apply({"AI_MODEL": "", "AI_PROVIDER": "openai"})
     assert config.AI_MODEL == before, "un champ vide ne doit rien écraser"

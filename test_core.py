@@ -1623,6 +1623,19 @@ def test_settings_page_shows_what_each_job_really_uses():
     assert "abonnement" not in html[i:i + 400].lower(), \
         "the subscription is offered for bulk work"
 
+def test_module_selfchecks_do_not_touch_live_settings():
+    """`python3 settings.py` once wiped the user's CLAUDE_CLI row."""
+    db.run("INSERT OR REPLACE INTO settings(k,v,updated_at) VALUES('CLAUDE_CLI','1',0)")
+    before = dict(db.q("SELECT k,v FROM settings WHERE k='CLAUDE_CLI'", one=True))
+    settings.demo()
+    after = db.q("SELECT k,v FROM settings WHERE k='CLAUDE_CLI'", one=True)
+    assert after and dict(after) == before, \
+        "the self-check changed a stored setting instead of restoring it"
+    db.run("DELETE FROM settings WHERE k='CLAUDE_CLI'")
+    settings.demo()
+    assert db.q("SELECT 1 FROM settings WHERE k='CLAUDE_CLI'", one=True) is None, \
+        "the self-check left a row behind where there was none"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
