@@ -177,17 +177,26 @@ Si tu écris un client leboncoin, quatre points de contact — et rien d'autre :
    échoue, et la page Crawler continue d'affirmer que le site n'est jamais
    contacté alors que c'est faux.
 
-**Les origines se convertissent en rayon.** L'app raisonne en minutes, la
-plupart des API en mètres. Utilise les mêmes constantes que le préfiltre
-distance pour que le rayon demandé corresponde à ce que le filtre gardera :
+**Ne filtre pas par géographie côté site, sauf preuve du contraire.** C'est
+tentant — l'API prend un rayon, l'app a des origines — et c'est presque toujours
+une perte nette :
 
-```python
-km = o["max_minutes"] / 60 * config.MODE_SPEED_KMH[mode] / config.DETOUR_FACTOR[mode]
-```
+- une recherche **sans origine** accepte tout (`distance_ok` renvoie `True`
+  d'emblée) : le rayon ne filtre alors rien d'utile ;
+- **`shipping_ok` court-circuite la distance.** Une annonce livrable à 500 km est
+  un match valide. Un rayon de 20 min la jette, et rien ne le signale ;
+- quand il y a des origines, `geo.best_origin` calcule le **vrai temps de trajet**
+  par mode, affiné par OSRM. Un cercle en kilomètres est plus grossier que ce
+  qui existe déjà.
 
-Vise large plutôt qu'étroit : le filtre exact (`engine.distance_ok`) repasse
-derrière et écarte ce qui dépasse. Trop étroit, tu perds des annonces sans
-jamais le savoir.
+N'envoie un filtre géographique que quand il ne peut rien coûter — des origines
+existent **et** la recherche refuse la livraison — et prends-le large : le filtre
+exact repasse derrière, alors qu'un rayon trop court perd des annonces en silence.
+
+**Pagine jusqu'au déjà-vu, pas jusqu'à la fin.** C'est un moniteur, pas un moteur
+de recherche : trie par date décroissante et arrête-toi dès qu'une page ne
+contient que des URL déjà en base. Tu récupères tout ce qui est nouveau depuis le
+dernier passage sans jamais parcourir le corpus entier.
 
 ## 8. Les pièges déjà rencontrés
 
