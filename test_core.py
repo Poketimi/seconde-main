@@ -260,18 +260,23 @@ def test_interview_template_cache():
     """Storing under the category but looking up by the phrase meant the cache
     never hit and every interview was paid for twice."""
     db.run("DELETE FROM interview_templates")
+    # Les tests précédents laissent des threads de fond (_run_bg) qui appellent
+    # eux aussi smart_chat. Ne compter que les appels portant NOTRE formulation,
+    # sinon le test échoue au hasard selon l'ordonnancement.
+    PHRASE = "une paire de ski test-cache-unique"
     calls = []
     real = ai.assistant.smart_chat
-    ai.assistant.smart_chat = lambda sysm, usr, purpose, **kw: (calls.append(purpose) or (json.dumps({
+    ai.assistant.smart_chat = lambda sysm, usr, purpose, **kw: (
+        (calls.append(purpose) if PHRASE in usr else None) or (json.dumps({
         "category": "ski",
         "questions": [{"id": "level", "text": "Niveau ?", "type": "choice",
                        "options": ["Débutant", "Avancé"], "scope": "domain"},
                       {"id": "new", "text": "Neuf ?", "type": "bool", "scope": "global"}]
     }), False))
     try:
-        cat, qs, cached = ai.ask_questions("une paire de ski")
+        cat, qs, cached = ai.ask_questions(PHRASE)
         assert cat == "ski" and len(qs) == 2 and not cached
-        cat2, qs2, cached2 = ai.ask_questions("une paire de ski")
+        cat2, qs2, cached2 = ai.ask_questions(PHRASE)
         assert cached2, "même formulation: doit venir du cache"
         cat3, qs3, cached3 = ai.ask_questions("ski")
         assert cached3, "la catégorie doit aussi servir de clé"
@@ -1310,7 +1315,15 @@ def test_subscription_tier_is_assistant_only_and_degrades_cleanly():
         assert "abonnement" not in [t["name"] for t in ai.tiers(cli_ok=True)]
         config.CLAUDE_CLI = True
 
-        # an expired session parks it and falls through to the API key
+        # Une session expirée met l'abonnement de côté et bascule sur la clé
+        # d'API. Le test fournit lui-même ce compte de repli : sinon il ne
+        # passait que sur une machine ayant un .env configuré, et échouait
+        # ailleurs pour une raison qui n'a rien à voir avec ce qu'il vérifie.
+        config.AI_PROVIDER = "openrouter"
+        config.AI_BASE_URL = "https://api.test/v1"
+        config.AI_API_KEY = "cle-de-test"
+        config.AI_MODEL = "modele-de-test"
+        config.AI_FALLBACKS = ["modele-de-test"]
         ai.client._cli_chat = lambda *a, **k: (None, "OAuth session expired")
         db.run("DELETE FROM ai_cache")
         calls = []
@@ -1601,6 +1614,13 @@ def test_job_route_picks_the_model():
         seen["model"] = body.get("model")
         return R()
     try:
+        # Le compte principal doit exister pour que le routage ait où aller :
+        # le test le fournit, plutôt que de dépendre du .env de la machine.
+        config.AI_PROVIDER = "openrouter"
+        config.AI_BASE_URL = "https://api.test/v1"
+        config.AI_API_KEY = "cle-de-test"
+        config.AI_MODEL = "defaut-du-compte"
+        config.AI_FALLBACKS = ["defaut-du-compte"]
         config.JOB_ROUTES = {"traduction": {"account": "principal", "model": "mon-modele"}}
         ai.net.post_json = fake
         ai._tier_down.clear()

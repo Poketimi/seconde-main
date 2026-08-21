@@ -30,13 +30,16 @@ def _slug(*parts):
 
 CLI_TIMEOUT = 180
 
-_which_cache = []
-
 def cli_available():
-    """shutil.which parcourt le PATH ; tiers() l'appelle à chaque requête."""
-    if not _which_cache:
-        _which_cache.append(bool(shutil.which("claude")))
-    return _which_cache[0]
+    """Le binaire `claude` est-il là ?
+
+    Volontairement NON mis en cache. Une version précédente gardait le
+    résultat pour éviter un parcours du PATH — quelques microsecondes — au prix
+    de ne jamais voir `claude` installé après le démarrage, et de rendre la
+    fonction impossible à remplacer dans un test. Le vrai coût était
+    `claude auth status` (~350 ms), qui lui est bien mis en cache.
+    """
+    return bool(shutil.which("claude"))
 
 CLI_LOGIN = {"running": False, "message": "", "started": 0.0}
 
