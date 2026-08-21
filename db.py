@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
   pw TEXT NOT NULL, salt TEXT NOT NULL,     -- PBKDF2-SHA256, sel par compte
+  is_admin INTEGER DEFAULT 0,               -- seul l'admin règle l'IA et les comptes
   created_at REAL
 );
 
@@ -203,7 +204,14 @@ def connect():
     return c
 
 # columns added after the first release; sqlite has no ADD COLUMN IF NOT EXISTS
-MIGRATIONS = [("listings", "auction_end", "REAL"),
+# Multi-comptes : ce qui appartient à quelqu'un porte son user_id. Les annonces
+# et les produits restent communs — c'est un catalogue partagé, et le dupliquer
+# par utilisateur multiplierait le scan et la dépense IA pour rien.
+MIGRATIONS = [("users", "is_admin", "INTEGER DEFAULT 0"),
+              ("searches", "user_id", "INTEGER"),
+              ("profile_facts", "user_id", "INTEGER"),
+              ("matches", "user_id", "INTEGER"),
+              ("listings", "auction_end", "REAL"),
               ("listings", "bids", "INTEGER"),
               ("listings", "dup_key", "TEXT"),
               ("matches", "target_id", "INTEGER"),
@@ -226,6 +234,12 @@ def init():
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
         # indexes on migrated columns must come after the ALTER, not in SCHEMA
         c.execute("CREATE INDEX IF NOT EXISTS idx_listings_dup ON listings(dup_key)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_searches_user ON searches(user_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_matches_user ON matches(user_id)")
+        # profile_facts était indexé par sa seule clé : deux comptes se
+        # seraient écrasés mutuellement leur taille ou leur niveau.
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_user "
+                  "ON profile_facts(COALESCE(user_id,0), k)")
 
 def q(sql, args=(), one=False):
     with connect() as c:

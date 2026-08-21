@@ -149,3 +149,44 @@ LOGIN_URLS = {
     "fb_marketplace": "https://www.facebook.com/marketplace/",
     "ricardo": "https://www.ricardo.ch/fr",
 }
+
+
+# --- multi-comptes ------------------------------------------------------
+# Les annonces et les fiches produit restent communes : c'est un catalogue
+# partagé, et le dupliquer par utilisateur multiplierait le scan et la dépense
+# IA pour rien. Ce qui appartient à quelqu'un — recherches, favoris, profil —
+# porte son user_id.
+
+def me():
+    """L'id de l'utilisateur connecté, ou None quand l'app est ouverte."""
+    return auth.user_id(session.get("user")) if session.get("user") else None
+
+def mine(col="user_id"):
+    """(fragment SQL, args) pour ne montrer que ce qui m'appartient.
+
+    Une ligne sans propriétaire (créée avant les comptes, ou pendant que l'app
+    était ouverte) reste visible par tous : la migration n'efface rien.
+    """
+    uid = me()
+    if uid is None:
+        return "1=1", ()
+    return f"({col} IS NULL OR {col} = ?)", (uid,)
+
+def owned_or_404(sid):
+    """La recherche demandée, si elle m'appartient. Sinon 404.
+
+    404 plutôt que 403 : l'existence d'une recherche d'un autre compte n'a pas
+    à être confirmée.
+    """
+    s = db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True)
+    uid = me()
+    if not s or (uid is not None and s["user_id"] is not None and s["user_id"] != uid):
+        abort(404)
+    return s
+
+def admin_only():
+    """Renvoie une réponse si l'utilisateur n'a pas la main, sinon None."""
+    if auth.is_admin(session.get("user")):
+        return None
+    flash("Réservé à l'administrateur.")
+    return redirect(url_for("index"))

@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 80 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 83 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -279,6 +279,52 @@ Les écarts entre navigateurs viennent surtout de Safari, et sont corrigés à l
 Un test vérifie ces points, plus le fait qu'aucune page ne déborde horizontalement en
 375 px de large.
 
+## Homelab (Docker)
+
+```bash
+docker compose up -d --build
+# puis http://<ton-serveur>:5055 -> /compte : crée le premier compte
+```
+
+Le premier compte créé est **administrateur** : lui seul règle l'IA, les clés et
+les autres comptes. Tant que la table `users` est vide, l'app reste ouverte —
+c'est la création du compte qui allume le verrou. Crée-le **avant** d'exposer le
+port.
+
+Trois points qui comptent :
+
+- **`./data` doit être monté.** Base, profil navigateur et journaux y vivent ;
+  sans volume, un `--build` efface tes recherches.
+- **Le conteneur écoute sur `0.0.0.0`, l'app en local sur `127.0.0.1`.** C'est
+  `HOST` qui décide, et c'est docker qui publie le port. Rien n'est exposé par
+  accident.
+- **Facebook ne fonctionne pas en conteneur.** Il lui faut un Chromium avec *ta*
+  session, qui ne se met pas dans une image. Les autres sources tournent
+  normalement ; laisse la recherche Facebook active sur ta machine, ou accepte
+  de perdre cette source côté serveur.
+
+L'image tourne sans root, embarque un `HEALTHCHECK` sur `/api/status`, et
+`.dockerignore` tient `data/` et `.env` hors de l'image.
+
+## Plusieurs comptes
+
+Chaque compte a ses **recherches**, ses **favoris** et son **profil**. Ce qui
+reste commun : les annonces vues, les fiches produit et l'historique des prix —
+c'est un catalogue partagé, et le dupliquer par utilisateur multiplierait le
+scan et la dépense IA sans rien apporter.
+
+Les réglages d'IA, les clés et les comptes sont **réservés à l'administrateur** :
+il n'y a qu'un budget et qu'une clé, et il faut bien que quelqu'un en réponde.
+Le dernier administrateur ne peut pas être supprimé.
+
+Ce qui existait **avant** les comptes n'a pas de propriétaire et reste visible
+par tout le monde : la migration n'efface ni ne réattribue rien. Assigne-le à la
+main si tu veux le cloisonner :
+
+```sql
+UPDATE searches SET user_id = 1 WHERE user_id IS NULL;
+```
+
 ## Mot de passe
 
 L'app est **ouverte par défaut** : elle écoute sur `127.0.0.1`. Créer un compte dans
@@ -314,7 +360,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 80 suites, sans réseau |
+| `test_core.py` | 83 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

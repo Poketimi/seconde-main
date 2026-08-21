@@ -4,7 +4,8 @@ from flask import (render_template, request, redirect, url_for,
                    jsonify, flash, abort, session, g)
 import db, geo, ai, sources, engine, config, browser, profile, sellers
 import reference, crawler, i18n, settings, auth, mailbox
-from .helpers import (get_or_404, safe_next, parse_origins, _save_targets,
+from .helpers import (me, mine, admin_only, owned_or_404,
+                      get_or_404, safe_next, parse_origins, _save_targets,
                       _state, _save_state, _run_bg, _run_one, _state_by_token,
                       _sparkline, SITE_DOMAINS, LOGIN_URLS)
 
@@ -16,7 +17,8 @@ app = Router()
 def index():
     searches = db.q("""SELECT s.*, (SELECT COUNT(*) FROM matches m WHERE m.search_id=s.id) n,
                        (SELECT COUNT(*) FROM matches m WHERE m.search_id=s.id AND m.seen=0) unseen
-                       FROM searches s ORDER BY s.active DESC, s.id""")
+                       FROM searches s WHERE {} ORDER BY s.active DESC, s.id"""
+                    .format(mine("s.user_id")[0]), mine("s.user_id")[1])
     recent = db.q("""SELECT m.*, l.title, l.price, l.currency, l.image, l.url, l.source,
                             l.location_raw, s.name search_name
                      FROM matches m JOIN listings l ON l.id=m.listing_id
@@ -37,7 +39,7 @@ def index():
 @app.route("/search/new", methods=["GET", "POST"])
 @app.route("/search/<int:sid>/edit", methods=["GET", "POST"])
 def search_form(sid=None):
-    s = get_or_404("searches", sid) if sid else None
+    s = owned_or_404(sid) if sid else None
     if request.method == "POST":
         f = request.form
         origins = json.dumps(parse_origins(f), ensure_ascii=False)
@@ -56,8 +58,9 @@ def search_form(sid=None):
         else:
             sid = db.run("""INSERT INTO searches(name,query,reference,category,price_min,
                             price_max,condition_min,seller_type,shipping_ok,exclude_kw,
-                            origins,sources,active,created_at)
-                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (*args, time.time()))
+                            origins,sources,active,created_at,user_id)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         (*args, time.time(), me()))
         _save_targets(sid, targets_txt)
         flash("Recherche enregistrée. Premier scan en cours…")
         threading.Thread(target=_run_one, args=(sid,), daemon=True).start()
@@ -73,7 +76,7 @@ def search_form(sid=None):
 
 @app.route("/search/<int:sid>")
 def results(sid):
-    s = get_or_404("searches", sid)
+    s = owned_or_404(sid)
     order = {"score": "m.score DESC", "price": "l.price ASC",
              "new": "l.first_seen DESC", "near": "m.travel_minutes ASC",
              "deal": "m.deal_delta ASC",
@@ -119,7 +122,7 @@ def results(sid):
 
 @app.route("/search/<int:sid>/targets")
 def targets_page(sid):
-    s = get_or_404("searches", sid)
+    s = owned_or_404(sid)
     rows = db.q("""SELECT t.*, (SELECT COUNT(*) FROM matches m WHERE m.target_id=t.id) n
                    FROM targets t WHERE t.search_id=? ORDER BY t.active DESC, t.id""", (sid,))
     return render_template("targets.html", s=s, rows=rows)
@@ -138,7 +141,7 @@ def target_delete(tid):
 
 @app.post("/search/<int:sid>/targets/add")
 def target_add(sid):
-    get_or_404("searches", sid)
+    owned_or_404(sid)
     name = (request.form.get("name") or "").strip()
     if name:
         db.run("""INSERT INTO targets(search_id,name,query,active,created_at)

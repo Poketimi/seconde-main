@@ -1682,6 +1682,55 @@ def test_local_browser_failure_is_not_a_site_outage():
     assert engine.in_backoff("fake_browser") > 0, "un refus du site doit mettre en retrait"
     db.run("DELETE FROM source_health WHERE source='fake_browser'")
 
+def test_accounts_are_separate():
+    """Deux comptes ne doivent pas voir les recherches ni le profil de l'autre."""
+    import app
+    from web.helpers import mine
+    db.run("DELETE FROM searches WHERE name LIKE 'multi-%'")
+    db.run("DELETE FROM users")
+    ok, _ = auth.create("alice", "hunter2")
+    assert ok and auth.is_admin("alice"), "le premier compte doit être administrateur"
+    ok, _ = auth.create("bob", "hunter2")
+    assert ok and not auth.is_admin("bob"), "le second compte ne doit pas l'être"
+    a, b = auth.user_id("alice"), auth.user_id("bob")
+    assert a != b
+
+    for uid, name in ((a, "multi-alice"), (b, "multi-bob")):
+        db.run("""INSERT INTO searches(name,query,origins,sources,active,created_at,user_id)
+                  VALUES(?,?,'[]','[]',1,?,?)""", (name, "x", time.time(), uid))
+
+    c = app.app.test_client()
+    c.post("/login", data={"username": "alice", "password": "hunter2"})
+    html = c.get("/").get_data(as_text=True)
+    assert "multi-alice" in html, "alice ne voit pas sa propre recherche"
+    assert "multi-bob" not in html, "alice voit la recherche de bob"
+
+    # et elle ne peut pas l'ouvrir en devinant l'identifiant
+    sid = db.q("SELECT id FROM searches WHERE name='multi-bob'", one=True)["id"]
+    assert c.get(f"/search/{sid}").status_code == 404, \
+        "une recherche d'un autre compte est accessible par son id"
+
+    # le dernier administrateur ne peut pas disparaître
+    assert auth.delete("alice") == 0, "le dernier administrateur a été supprimé"
+    assert auth.delete("bob") == 1
+
+    db.run("DELETE FROM searches WHERE name LIKE 'multi-%'")
+    db.run("DELETE FROM users")
+
+def test_container_listens_where_it_is_told():
+    """En conteneur il faut 0.0.0.0 ; en local, surtout pas par défaut."""
+    src = pathlib.Path("app.py").read_text()
+    assert 'os.environ.get("HOST", "127.0.0.1")' in src, \
+        "l'app doit rester sur localhost par défaut"
+    assert 'os.environ.get("PORT", 5055)' in src
+    docker = pathlib.Path("Dockerfile").read_text()
+    assert "USER seconde" in docker, "le conteneur tourne en root"
+    assert 'VOLUME ["/app/data"]' in docker, "l'état ne survivrait pas à un build"
+    assert "HEALTHCHECK" in docker
+    ign = pathlib.Path(".dockerignore").read_text()
+    for leak in ("data/", ".env"):
+        assert leak in ign, f"{leak} finirait dans l'image"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

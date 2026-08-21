@@ -1,0 +1,22 @@
+services:
+  seconde-main:
+    build: .
+    container_name: seconde-main
+    restart: unless-stopped
+    ports:
+      - "5055:5055"
+    volumes:
+      # Base, profil navigateur, journaux. Sans ça, tout part à chaque build.
+      - ./data:/app/data
+    environment:
+      TZ: Europe/Zurich
+      # Les clés se règlent dans /reglages et vivent en base ; les mettre ici
+      # n'est utile que pour un premier démarrage sans interface.
+      # AI_PROVIDER: openrouter
+      # AI_API_KEY: ""
+      POLL_SECONDS: "1800"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5055/api/status"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
