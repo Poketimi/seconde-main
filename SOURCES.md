@@ -1,0 +1,164 @@
+# Brancher un nouveau site
+
+Tout ce qu'il faut savoir pour ajouter une source. Un adaptateur, c'est **une
+fonction** ; tout le reste — filtres, distance, IA, dédoublonnage, traduction,
+notifications — est déjà là et s'applique tout seul.
+
+---
+
+## 1. Le contrat
+
+```python
+@adapter("mon_site")
+def mon_site(query, spec=None):
+    """query : le texte cherché. spec : la ligne `searches` (dict-like) ou None.
+       Retourne une liste de dicts. Une liste vide est une réponse valable."""
+    return [...]
+```
+
+- `sources.py` contient le décorateur `@adapter(nom)`, qui inscrit la fonction
+  dans `ADAPTERS`. Rien d'autre à déclarer : le nom devient utilisable partout
+  (recherches, page Sources, filtres).
+- `spec` porte `query`, `reference`, `price_min`, `price_max`, `condition_min`,
+  `seller_type`, `exclude_kw`, `origins`, `sources`. Tu peux l'ignorer : les
+  filtres sont réappliqués après coup de toute façon.
+- **Ne lève pas d'exception pour dire « rien trouvé »** — retourne `[]`.
+  `sources.search()` attrape les exceptions et les affiche en `error`, ce qui
+  déclenche un backoff et une notification de panne.
+
+## 2. Le dict d'une annonce
+
+Seul `url` est obligatoire — c'est la clé d'unicité. Tout le reste est
+facultatif, et **mieux vaut `None` qu'une valeur inventée** : une annonce sans
+prix s'affiche « prix inconnu », une annonce avec un faux prix pollue les
+médianes du catalogue pour de bon.
+
+| champ | type | note |
+|---|---|---|
+| `url` | str | **obligatoire**, unique en base |
+| `source` | str | le nom de ton adaptateur |
+| `source_id` | str | identifiant chez eux |
+| `title` | str | ce sur quoi le matching travaille |
+| `description` | str | |
+| `price` | float | en unités, pas en centimes |
+| `currency` | str | `CHF`, `EUR`… |
+| `price_type` | str | `fixed` / `auction` / `negotiable` / `free` |
+| `category` | str | libre ; l'IA normalise ensuite |
+| `condition` | str | `new` / `like_new` / `good` / `fair` / `parts` |
+| `seller_type` | str | `private` / `pro` — `None` si le site ne le dit pas |
+| `seller_name`, `seller_key` | str | `seller_key` sert à regrouper les annonces d'un même vendeur |
+| `location_raw` | str | tel qu'affiché |
+| `postal_code`, `country` | str | **le code postal suffit** : les coordonnées sont résolues hors ligne |
+| `lat`, `lon` | float | laisse `None`, `geo.py` s'en charge |
+| `shipping` | 0/1 | 1 = livrable, ce qui court-circuite le filtre distance |
+| `shipping_cost` | float | |
+| `image` | str | vignette |
+| `images` | str | **JSON**, pas une liste : `json.dumps([...])` |
+| `posted_at` | float | epoch |
+| `auction_end` | float | epoch ; active l'affichage du compte à rebours |
+| `bids` | int | |
+| `attrs` | str | **JSON** — tout ce qui est propre à la catégorie |
+| `raw` | str | **JSON** du payload d'origine, tronqué à 20 000 |
+
+Les champs absents de cette liste sont ignorés en silence (`engine.COLS`).
+
+## 3. Ce que tu récupères gratuitement
+
+Une fois l'adaptateur inscrit, sans une ligne de plus :
+
+- **filtres** prix, mots-clés exclus, type de vendeur (`engine.passes_rules`) ;
+- **distance en minutes** depuis chaque point de départ, à pied / vélo / voiture /
+  transports (`engine.distance_ok`) — il te suffit d'avoir mis un code postal ;
+- **dédoublonnage** entre sites (`engine.dup_key` : titre normalisé + prix + NPA) ;
+- **tri par IA** puis fiche produit et médiane de prix ;
+- **traduction** en français et anglais ;
+- **cycle de vie** : une annonce disparue est marquée, jamais supprimée, ce qui
+  alimente l'historique des prix ;
+- **santé** : la page Sources dit *pourquoi* c'est vide, avec backoff exponentiel
+  et notification quand une source qui marchait tombe.
+
+## 4. Comment sortir sur le réseau
+
+Trois voies, selon ce que le site permet. **Choisis d'abord, code ensuite.**
+
+### a) `crawler.get(url)` — un site qui accepte les robots
+
+```python
+import crawler
+r = crawler.get("https://www.exemple.ch/recherche?q=" + quote_plus(query))
+if r is None:
+    return []          # refusé ou en retrait : crawler l'a déjà journalisé
+```
+
+`crawler.get` lit `robots.txt`, respecte `crawl-delay` (plancher 15 s), fait des
+requêtes conditionnelles, et met le domaine en retrait exponentiel sur 403/429/
+CAPTCHA. Rien à gérer côté adaptateur. Ajoute le domaine à la liste de
+`app.crawler_page()` pour qu'il apparaisse sur la page d'audit.
+
+### b) `net.get` / `net.post_json` — une API officielle
+
+Pour un point d'accès prévu pour être appelé, il n'y a pas de `robots.txt` qui
+tienne. Passe par `net`, pas par `crawler` (`net.post_form` existe pour OAuth).
+
+### c) `mailbox.py` — un site qui refuse le crawl mais envoie des alertes
+
+Ajoute une entrée dans `mailbox.SITES` :
+
+```python
+"mon_site": {"from": ("mon-site.fr",),
+             "link": r"https?://(?:www\.)?mon-site\.fr/annonce/(\d{6,})"},
+```
+
+L'adaptateur est créé automatiquement à partir de cette entrée. C'est la voie
+utilisée pour leboncoin.
+
+## 5. Statuts et santé
+
+`sources.LAST_STATUS[nom] = (statut, détail)` pilote la page Sources. Statuts
+reconnus : `ok`, `empty`, `blocked`, `login`, `error`. Si tu ne dis rien,
+`sources.search()` déduit : des lignes → `ok`, rien → `empty` (ou `blocked` si
+`net.LAST_BLOCKED` a été levé).
+
+Renseigne-le toi-même quand tu sais mieux :
+
+```python
+if not creds:
+    LAST_STATUS["mon_site"] = ("login", "identifiants absents")
+    return []
+```
+
+La différence compte : `blocked | login | error` déclenchent un backoff,
+`empty` non — une source qui renvoie légitimement zéro ne doit pas être mise en
+pause.
+
+## 6. Vérifier
+
+```python
+def demo():
+    rows = mon_site("velo")          # ou un payload figé, sans réseau
+    assert all(r["url"] for r in rows)
+    assert all(r.get("price") is None or r["price"] > 0 for r in rows)
+```
+
+```bash
+python3 sources.py           # les self-checks de tous les adaptateurs
+python3 test_core.py         # la suite complète, sans réseau
+```
+
+Puis dans l'app : page **Sources** → *Vérifier* lance l'adaptateur pour de vrai
+et écrit le verdict.
+
+## 7. Les pièges déjà rencontrés
+
+- **Séparateurs de milliers.** `2 100 CHF` avec une espace insécable ou une
+  apostrophe typographique s'est enregistré en `2.00`. Réutilise `sources._num`.
+- **Ne devine pas un prix** depuis le texte autour : « CAAD13 1 250 € » s'est lu
+  `131250` parce que le motif laissait un séparateur coller n'importe quels
+  chiffres.
+- **`images` et `attrs` sont du JSON**, pas des objets Python. SQLite ne lie que
+  des scalaires.
+- **Une galerie d'annonce liste souvent les annonces voisines.** Exclure les
+  ancêtres qui pointent vers un autre article, sinon 20 photos sur 25 sont
+  celles du voisin.
+- **Vérifie une URL construite** avant de la livrer : un champ `seoPath` inventé
+  a produit 133 liens en 404 sans que rien ne le signale.

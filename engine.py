@@ -344,6 +344,20 @@ def in_backoff(source):
     left = (r["last_run"] + wait) - time.time()
     return max(0, left)
 
+def forget_removed_sources():
+    """Oublie la santé des sources qui n'ont plus d'adaptateur.
+
+    Retirer une source laissait sa ligne dans source_health, affichée
+    indéfiniment en « erreur — aucun adaptateur » sur /sources : une panne
+    permanente pour quelque chose qu'on a délibérément enlevé.
+    """
+    known = set(sources.ADAPTERS)
+    stale = [r["source"] for r in db.q("SELECT source FROM source_health")
+             if r["source"] not in known]
+    for s in stale:
+        db.run("DELETE FROM source_health WHERE source=?", (s,))
+    return stale
+
 def health():
     return db.q("SELECT * FROM source_health ORDER BY source")
 

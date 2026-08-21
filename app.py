@@ -844,6 +844,7 @@ def crawler_page():
 
 @app.route("/sources")
 def sources_page():
+    engine.forget_removed_sources()      # une source retirée n'est pas une panne
     health = {r["source"]: dict(r) for r in engine.health()}
     rows = []
     for name in sorted(sources.ADAPTERS):

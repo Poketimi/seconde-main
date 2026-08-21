@@ -292,6 +292,11 @@ automatique ne reçoive pas une page de connexion.
 
 ---
 
+## Ajouter un site
+
+Voir **[SOURCES.md](SOURCES.md)** : le contrat d'un adaptateur, le dict d'une
+annonce, les trois voies réseau, et les pièges déjà rencontrés.
+
 ## Fichiers
 
 | | |
