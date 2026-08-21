@@ -1966,6 +1966,46 @@ def inspect_source_of_results():
     from web import searches
     return inspect.getsource(searches)
 
+def test_delivery_is_read_from_the_seller_text_when_the_site_says_nothing():
+    """anibis, tutti et facebook ne publient aucun champ livraison.
+
+    Le vendeur, lui, le dit souvent : 92 des 793 descriptions annonçaient
+    explicitement l'envoi. Les ignorer laissait « non précisé » sur des
+    annonces parfaitement claires.
+    """
+    from sources.util import delivery_from_text as d
+    livrable = ["Keine Garantie. Kein Umtausch. Versand möglich.",
+                "Abholung in Zürich oder Versand gegen Aufpreis.",
+                "Postversand möglich",
+                "Lieferung per Post wäre plus +9Fr",
+                "Envoi possible à vos frais.",
+                "spedizione possibile"]
+    retrait = ["Nur Abholung", "Kein Versand, nur Abholung in Bern",
+               "Pas d'envoi, retrait uniquement", "Solo ritiro",
+               "Remise en main propre uniquement"]
+    muet = ["Abholung in Zürich", "Sehr guter Zustand, wenig benutzt", "", None]
+    for t in livrable:
+        assert d(t) == 1, f"envoi annoncé, lu comme inconnu : {t!r}"
+    for t in retrait:
+        assert d(t) == 0, f"retrait exclusif manqué : {t!r}"
+    for t in muet:
+        assert d(t) is None, f"le vendeur n'a rien dit, on a supposé : {t!r}"
+    # deux affirmations contraires : ne pas jouer à pile ou face
+    assert d("Nur Abholung. Versand möglich.") is None
+
+def test_platform_flag_still_outranks_the_text():
+    """Sur leboncoin le site sait : le texte ne peut que rabattre le drapeau."""
+    from sources import leboncoin as lbcmod
+    class At:
+        def __init__(self, v): self.value, self.value_label, self.key_label = v, v, None
+    class Ad:
+        subject, body = "Sac", "Envoi possible"
+        attributes = {"shippable": At("false")}
+    assert lbcmod._shipping(Ad()) == 0, "le texte a levé un refus du site"
+    Ad.attributes = {"shippable": At("true")}
+    Ad.body = "Remise en main propre uniquement"
+    assert lbcmod._shipping(Ad()) == 0, "le texte n'a pas rabattu le drapeau"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

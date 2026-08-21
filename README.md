@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 93 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 95 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -246,7 +246,19 @@ Un filtre **livraison** est disponible sur la page de résultats — c'est la se
 compte quand le vendeur est à 600 km. Le drapeau vient de l'API du site (`shippable` chez
 leboncoin, `face_to_face` pour un retrait sur place).
 
-Le texte du vendeur peut le **rabattre**, jamais le lever : « remise en main propre
+**Quand le site ne dit rien, le vendeur, lui, le dit souvent.** anibis, tutti et facebook
+ne publient aucun champ de livraison — mais 92 des 793 descriptions annonçaient l'envoi en
+toutes lettres. Le texte est donc lu, en **allemand, français et italien** :
+« Versand möglich », « Postversand », « Envoi possible », « spedizione possibile » →
+livrable ; « nur Abholung », « pas d'envoi », « solo ritiro » → retrait. Deux affirmations
+contradictoires dans la même annonce → non précisé, plutôt qu'un pile ou face.
+
+Deux pièges symétriques, tous deux vérifiés sur des annonces réelles : mentionner le
+retrait n'exclut pas l'envoi (« Abholung in Zürich **oder Versand** gegen Aufpreis »), et un
+« kein » devant autre chose ne nie pas l'envoi (« **Kein Umtausch.** Versand möglich »).
+
+Quand le site **sait**, il fait foi : sur leboncoin, `shippable` prime, et le texte du
+vendeur peut le **rabattre**, jamais le lever : « remise en main propre
 uniquement », « pas d'envoi », « je n'envoie pas ». Une simple mention ne suffit pas —
 « envoi possible **ou** remise en main propre » reste livrable, et c'est le cas le plus
 fréquent. Confondre les deux coûterait toutes les annonces françaises livrables, puisque
@@ -416,7 +428,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 93 suites, sans réseau |
+| `test_core.py` | 95 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

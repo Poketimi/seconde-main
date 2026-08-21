@@ -209,8 +209,10 @@ def fb_item_details(url):
             seen.add(u); imgs.append(u)
     prof = out.get("profile") or ""
     m = re.search(r"/marketplace/profile/(\d+)", prof)
+    desc = out.get("description") or None
     return {"images": imgs[:12],
-            "description": (out.get("description") or None),
+            "description": desc,
+            "shipping": delivery_from_text(desc),
             "seller_key": m.group(1) if m else None,
             "profile_url": f"https://www.facebook.com/marketplace/profile/{m.group(1)}/"
                            if m else None}
@@ -249,6 +251,42 @@ def _thumb(v):
 # typographic quote, non-breaking space (facebook "2\xa0100 CHF"), narrow
 # no-break space, thin space. Missing any of them silently divides the price
 # by a thousand -- a 2100 CHF bike was being stored as 2.
+# --- livraison ---------------------------------------------------------
+# anibis, tutti et facebook ne publient AUCUN champ de livraison : la seule
+# source est ce que le vendeur écrit. En allemand, français et italien, parce
+# que c'est la Suisse.
+#
+# Deux pièges symétriques, tous deux vérifiés sur des annonces réelles :
+#   « Abholung in Zürich oder Versand gegen Aufpreis » -> livrable
+#   « Keine Garantie. Kein Umtausch. Versand möglich. » -> livrable
+# Mentionner le retrait n'exclut pas l'envoi, et « kein » devant autre chose
+# ne nie pas l'envoi.
+_SHIP_YES = re.compile(
+    r"(versand\s*(m[oö]glich|gegen|inkl|:|kostet|ab\b)"
+    r"|postversand|per\s+post|verschick\w+|liefer(ung|bar)\s|paketversand"
+    r"|envoi\s+(possible|contre|en\s+sus)|j['e]\s*envoie|exp[ée]dition\s+possible"
+    r"|spedizione\s+(possibile|contro)|posso\s+spedire)", re.I)
+_SHIP_NO = re.compile(
+    r"(kein\w*\s+versand|nicht\s+versand|nur\s+abholung|abholung\s+nur"
+    r"|selbstabholung\s+nur|nur\s+selbstabholung"
+    r"|pas\s+d['e]\s*envoi|aucun\s+envoi|retrait\s+(uniquement|seulement)"
+    r"|main\s*propre[^.!?\n]{0,30}\b(uniquement|seulement|exclusivement)"
+    r"|\b(uniquement|seulement)[^.!?\n]{0,30}main\s*propre"
+    r"|je\s+n['e]\s*(envoie|exp[ée]die)\s*pas"
+    r"|solo\s+ritiro|ritiro\s+in\s+loco)", re.I)
+
+def delivery_from_text(text):
+    """1 livrable, 0 retrait seulement, None si le vendeur n'en dit rien.
+
+    Deux affirmations contradictoires dans la même annonce -> None. Mieux vaut
+    « on ne sait pas » qu'un pile ou face.
+    """
+    t = text or ""
+    yes, no = bool(_SHIP_YES.search(t)), bool(_SHIP_NO.search(t))
+    if yes and no:
+        return None
+    return 1 if yes else (0 if no else None)
+
 _THOUSANDS = "'\u2019\u2018`\u00a0\u202f\u2009\u2007\u2060 "
 
 def _num(v):

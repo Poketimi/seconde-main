@@ -4,7 +4,7 @@ from urllib.parse import quote_plus, urljoin
 import net, browser, crawler, geo
 from .registry import adapter, ADAPTERS, LAST_STATUS, LAST_STRATEGY, try_strategies
 from .util import (_next_data, _flight_blob, json_objects_with, find_lists,
-                   jsonld_listings, hires, _thumb, _num, _ts)
+                   jsonld_listings, hires, _thumb, _num, _ts, delivery_from_text)
 
 # --- anibis + tutti: same SMG platform, identical payload ------------
 @adapter("anibis")
@@ -48,6 +48,10 @@ def _smg_search(name, base, query):
             "url": urljoin(base, path) if path else f"{base}/fr/vi/{lid}",
             "source": name, "source_id": str(lid),
             "title": a.get("title"), "description": a.get("body"),
+            # anibis et tutti ne publient aucun champ de livraison : ce que le
+            # vendeur écrit est la seule information disponible. None quand il
+            # n'en dit rien — surtout ne pas supposer.
+            "shipping": delivery_from_text(f"{a.get('title') or ''} {a.get('body') or ''}"),
             "price": _num(a.get("formattedPrice") or a.get("price")),
             "currency": "CHF", "price_type": "fixed",
             "category": cat.get("categoryID") if isinstance(cat, dict) else cat,
