@@ -2336,6 +2336,50 @@ def test_a_query_that_finds_nothing_is_retried_one_word_shorter():
         R.ADAPTERS.pop("faux", None)
         R.LAST_STATUS.pop("faux", None)
 
+def test_target_floor_needs_the_model_in_the_title():
+    """Le plancher de 80 s'appliquait à tout ce que la requête d'un modèle
+    avait ramené, pas aux annonces correspondant vraiment à ce modèle.
+
+    Chercher « Burton Custom » ramenait une guitare Ibanez et un livre sur
+    Fender. L'IA les rejetait explicitement — « Guitare, pas un snowboard » —
+    et max(score, 80) les repêchait. 91 des 247 matchs ciblés étaient là.
+    """
+    import inspect
+    src = inspect.getsource(engine.judge)
+    assert "matches_target(d.get(\"title\"), tname)" in src, \
+        "le plancher ne vérifie pas que le titre correspond au modèle"
+    # ...et sur le titre SEUL : une boutique qui liste son stock dans la
+    # description faisait correspondre n'importe quel modèle
+    assert 'd.get("description")' not in src.split("max(score, 80.0)")[0][-400:], \
+        "la description sert au plancher : n'importe quelle boutique passerait"
+
+    assert engine.matches_target("Burton Custom 162 snowboard", "Burton Custom")
+    assert not engine.matches_target("Ibanez stratocaster guitare", "Burton Custom")
+    assert engine.matches_target("Head Speed MP 2026 300g", "Head Speed MP")
+    assert not engine.matches_target("Head Kore 99 ski all-mountain", "Head Speed MP")
+    # la description ne doit pas suffire
+    assert not engine.matches_target(
+        "Ibanez stratocaster", "Burton Custom",
+        None) , "titre seul attendu"
+
+def test_scoring_prompt_treats_a_shared_brand_as_no_evidence():
+    """Head fait des skis ET des raquettes ; Burton des snowboards ET des vestes.
+
+    Un ski « Head Edition Limitée » notait 85 dans une recherche de raquettes :
+    la marque collait, l'objet non. La catégorie du site disait winterSports.
+    """
+    # espaces normalisés : le prompt est justifié à 76 colonnes, une consigne
+    # peut se trouver coupée par un retour à la ligne
+    p = " ".join(ai.classify.SCORE_EXTRA.lower().split())
+    for clue in ("shared brand", "head makes skis", "seller's own category",
+                 "outranks the brand", "returns what it likes"):
+        assert clue in p, f"la consigne « {clue} » manque au prompt de score"
+    # la catégorie du site doit bien parvenir au modèle
+    b = ai.classify._listing_brief(
+        {"title": "x", "description": "y", "price": 1, "currency": "CHF",
+         "category": "winterSports"}, 0)
+    assert b["cat"] == "winterSports", "la catégorie du site n'est pas transmise"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

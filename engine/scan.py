@@ -210,8 +210,18 @@ def judge(s, candidates, req=None, ai_budget=None):
             db.recompute_product_stats(pid)
 
         score = float(v.get("score") or 0)
-        if tname and v.get("is_item", True):
-            score = max(score, 80.0)      # the exact model was matched by name
+        # Le plancher ne vaut que si le TITRE correspond vraiment au modèle.
+        # Il s'appliquait dès que l'annonce venait d'une recherche lancée pour
+        # ce modèle — or un site renvoie ce qu'il veut : chercher « Burton
+        # Custom » ramenait une guitare Ibanez et un livre sur Fender, que l'IA
+        # rejetait explicitement (« Guitare, pas un snowboard ») avant que le
+        # max() ne les repêche à 80. 91 des 247 matchs ciblés étaient dans ce
+        # cas.
+        # TITRE SEUL, jamais la description : la boutique qui liste tout son
+        # stock (« aussi en stock : … ») faisait correspondre n'importe quel
+        # modèle. Même piège que le score mots-clés, corrigé au même endroit.
+        if tname and v.get("is_item", True) and matches_target(d.get("title"), tname):
+            score = max(score, 80.0)      # le modèle exact est nommé dans le titre
         if not v.get("is_item", True) or score < 40:
             db.run("DELETE FROM matches WHERE search_id=? AND listing_id=?", (s["id"], lid))
             delta_count -= 1

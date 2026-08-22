@@ -36,6 +36,19 @@ Also return for each:
            Score 0 when the ad sells an ACCESSORY for the wanted item (case,
            cable, charger, battery, spare part) rather than the item itself,
            and 0 for services and wanted-ads.
+
+           A SHARED BRAND IS NOT EVIDENCE. Head makes skis AND tennis rackets;
+           Burton makes snowboards AND clothing; Salomon makes skis AND shoes.
+           When the brand matches but the object does not, score 0.
+
+           `cat` is the SELLER'S OWN category on the site. It outranks the
+           brand and outranks your reading of the title: `winterSports` on a
+           request for a tennis racket means it is not a tennis racket, even
+           if the brand fits. Read `desc` before deciding -- an ad titled
+           "Head Edition Limitée" whose description talks about skis is a ski.
+
+           Do not assume the ad matches because it turned up in this search.
+           A site returns what it likes for a query.
   reason : max 12 words, in French.
 Buyer request: {req}
 """

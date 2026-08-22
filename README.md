@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 108 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 110 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -138,6 +138,20 @@ Deux modèles, deux usages :
 |---|---|---|
 | **tri des annonces** | des centaines de fois par jour | petit et rapide |
 | **entretien de l'assistant** | 2 fois par nouvelle recherche | le meilleur possible |
+
+**Une marque partagée n'est pas une preuve.** Head fait des skis *et* des raquettes,
+Burton des snowboards *et* des vestes. Un ski « Head Édition Limitée » notait 85 dans une
+recherche de raquettes : la marque collait, l'objet non. La catégorie du vendeur sur le site
+(`winterSports`) l'emporte désormais sur la marque et sur la lecture du titre, et le prompt
+dit explicitement de ne pas supposer qu'une annonce correspond parce qu'elle est remontée
+dans cette recherche — un site renvoie ce qu'il veut.
+
+**Le plancher des modèles ciblés exige le modèle dans le titre.** Il s'appliquait à tout ce
+que la requête d'un modèle avait ramené : chercher « Burton Custom » faisait entrer une
+guitare Ibanez et un livre sur Fender, que l'IA rejetait pourtant en toutes lettres
+(« Guitare, pas un snowboard ») avant que `max(score, 80)` ne les repêche. 91 des 247 matchs
+ciblés étaient dans ce cas. Le titre seul compte — une boutique qui liste tout son stock
+dans la description faisait sinon correspondre n'importe quel modèle.
 
 L'IA sert là où les règles échouent : distinguer un iPhone d'une coque ou d'un service de
 réparation, et normaliser « IPhone 13 Pro 512 go » et « Apple iPhone 13 Pro Max 512gb » vers
@@ -485,7 +499,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 108 suites, sans réseau |
+| `test_core.py` | 110 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les
