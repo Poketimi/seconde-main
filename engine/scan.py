@@ -135,8 +135,13 @@ def _run_search(s, ai_budget=None):
                "travel_minutes,travel_origin,travel_mode,created_at)"
                " VALUES(?,?,?,?,?,?,?,?,?)",
                (s["id"], lid, tid,
-                100.0 if tname else keyword_score(d, s),
-                f"modèle {tname}" if tname else PENDING,
+                # `tname` dit d'où vient l'annonce, pas ce qu'elle est : le
+                # site renvoie ce qu'il veut pour « Burton Custom ». Sans le
+                # modèle dans le titre, on retombe sur le score mots-clés.
+                100.0 if (tname and matches_target(d.get("title"), tname))
+                else keyword_score(d, s),
+                f"modèle {tname}" if (tname and matches_target(d.get("title"), tname))
+                else PENDING,
                 mins, label, mode, time.time()))
         total_matched += 1
 
@@ -191,7 +196,7 @@ def judge(s, candidates, req=None, ai_budget=None):
     for k, (lid, d, mins, label, mode, tid, tname) in enumerate(candidates):
         v = verdicts.get(k)
         if not v:
-            if tname:
+            if tname and matches_target(d.get("title"), tname):
                 db.run("UPDATE matches SET reason=? WHERE search_id=? AND listing_id=?",
                        (f"modèle {tname}", s["id"], lid))
             elif keyword_score(d, s) < 40:    # no AI: apply the keyword cut-off
