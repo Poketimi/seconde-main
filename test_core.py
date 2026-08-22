@@ -2420,6 +2420,60 @@ def test_advisor_button_runs_on_demand_and_is_visible_when_it_lands():
     finally:
         ADVISOR["busy"] = None
 
+def test_distance_can_be_filtered_after_the_fact():
+    """Le trajet stocké n'existe que si la recherche avait des origines.
+
+    Six des sept n'en ont pas : le filtre minutes ne servait à rien. Celui-ci
+    part d'un lieu choisi au moment de filtrer.
+    """
+    import app
+    db.run("DELETE FROM matches WHERE search_id IN (SELECT id FROM searches WHERE name='dist-test')")
+    db.run("DELETE FROM searches WHERE name='dist-test'")
+    db.run("DELETE FROM listings WHERE url LIKE 'https://dist/%'")
+    sid = db.run("""INSERT INTO searches(name,query,origins,sources,active,created_at)
+                    VALUES('dist-test','velo','[]','[]',1,?)""", (time.time(),))
+    ids = {}
+    for tag, npa, ville in (("proche", "1003", "Lausanne"),
+                            ("loin", "1950", "Sion"),
+                            ("inconnu", None, None)):
+        ids[tag] = db.run("""INSERT INTO listings(url,source,title,postal_code,
+                             location_raw,country,active,first_seen)
+                             VALUES(?,?,?,?,?,'CH',1,?)""",
+                          (f"https://dist/{tag}", "fake", f"Velo {tag}", npa, ville, time.time()))
+        db.run("""INSERT INTO matches(search_id,listing_id,score,created_at)
+                  VALUES(?,?,90,?)""", (sid, ids[tag], time.time()))
+
+    c = app.app.test_client()
+    def titles(q=""):
+        h = c.get(f"/search/{sid}{q}").get_data(as_text=True)
+        return {t for t in ("proche", "loin", "inconnu") if f"Velo {t}" in h}
+
+    assert titles() == {"proche", "loin", "inconnu"}, titles()
+    near = titles("?forig=Lausanne&fmins=30&fmode=car")
+    assert "proche" in near and "loin" not in near, near
+    # une annonce sans lieu connu n'est pas « loin », elle est inconnue : on la garde
+    assert "inconnu" in near, "une annonce sans lieu a été écartée comme trop loin"
+    assert titles("?forig=Lausanne&fmins=300&fmode=car") == {"proche", "loin", "inconnu"}
+    # un lieu introuvable ne doit pas vider la liste en silence
+    h = c.get(f"/search/{sid}?forig=Zzzzz&fmins=10").get_data(as_text=True)
+    assert "introuvable" in h and "Velo loin" in h, "lieu inconnu : liste vidée sans le dire"
+
+    db.run("DELETE FROM matches WHERE search_id=?", (sid,))
+    db.run("DELETE FROM searches WHERE id=?", (sid,))
+    db.run("DELETE FROM listings WHERE url LIKE 'https://dist/%'")
+
+def test_filters_are_collapsed_until_one_is_active():
+    import app
+    sid = db.q("SELECT id FROM searches ORDER BY id LIMIT 1", one=True)
+    if not sid:
+        return
+    c = app.app.test_client()
+    plain = c.get(f"/search/{sid['id']}").get_data(as_text=True)
+    assert '<details class="filterbox" >' in plain, "les filtres devraient être repliés"
+    active = c.get(f"/search/{sid['id']}?fmax=150").get_data(as_text=True)
+    assert '<details class="filterbox" open>' in active, \
+        "un filtre actif doit rester visible, sinon on ignore pourquoi la liste est réduite"
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

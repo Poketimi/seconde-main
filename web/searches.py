@@ -93,7 +93,10 @@ def results(sid):
         where.append("l.price >= ?"); args.append(num("fmin"))
     if num("fmax") is not None:
         where.append("l.price <= ?"); args.append(num("fmax"))
-    if num("fmins") is not None:
+    # Le trajet stocké n'existe que si la recherche avait des origines — six
+    # des sept n'en ont pas. Ce filtre-ci se calcule après coup, depuis un
+    # point de départ choisi ici : c'est celui qui sert vraiment.
+    if num("fmins") is not None and not f.get("forig"):
         where.append("(m.travel_minutes IS NULL OR m.travel_minutes <= ?)"); args.append(num("fmins"))
     if f.get("fsource"):
         where.append("l.source = ?"); args.append(f["fsource"])
@@ -120,6 +123,31 @@ def results(sid):
                     FROM matches m JOIN listings l ON l.id=m.listing_id
                     LEFT JOIN products p ON p.id=l.product_id
                     WHERE m.search_id=?{clause} ORDER BY {order}""", (sid, *args))
+    # --- distance calculée à la volée ------------------------------------
+    # Pas en SQL : le temps de trajet dépend d'un point de départ que
+    # l'utilisateur choisit maintenant, pas de ce qui était réglé à la
+    # création de la recherche. Estimation hors ligne (vol d'oiseau x détour
+    # / vitesse), pas de routage : sur 250 annonces ce serait 250 appels.
+    dist = {}
+    forig, fmode = (f.get("forig") or "").strip(), (f.get("fmode") or "car")
+    if forig:
+        here = geo.by_postcode(forig, "CH") or geo.by_place_name(forig, "CH") \
+            or geo.by_postcode(forig, "FR") or geo.by_place_name(forig, "FR")
+        if not here:
+            flash(f"Lieu « {forig} » introuvable — filtre distance ignoré.")
+        else:
+            limit = num("fmins")
+            kept = []
+            for r in rows:
+                c = geo.locate_listing(r["location_raw"], r["postal_code"], r["country"])
+                mins = geo.estimate_minutes(here, c, fmode) if c else None
+                dist[r["listing_id"]] = mins
+                # sans coordonnées on ne tranche pas : une annonce sans lieu
+                # n'est pas « loin », elle est inconnue — on la garde.
+                if limit is None or mins is None or mins <= limit:
+                    kept.append(r)
+            rows = kept
+
     # Les recommandations sont indépendantes des filtres : elles portent sur
     # le lot entier, pas sur ce qui est affiché à l'écran.
     picks = db.q("""SELECT m.reco_rank, m.reco_why, m.listing_id,
@@ -139,7 +167,7 @@ def results(sid):
                 JOIN listings l ON l.id=m.listing_id WHERE m.search_id=? ORDER BY l.source""", (sid,))]
     return render_template("results.html", s=s, rows=rows, log=log,
                            origins=json.loads(s["origins"] or "[]"),
-                           picks=picks, reco_summary=reco_summary, tweak=tweak,
+                           picks=picks, reco_summary=reco_summary, tweak=tweak, dist=dist,
                            advising=(ADVISOR['busy'] == sid),
                            sort=request.args.get("sort", "score"),
                            srcs=srcs, f=f, nfilters=len(where))

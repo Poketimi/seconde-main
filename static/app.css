@@ -410,3 +410,17 @@ button[data-busy]{opacity:.6}
 /* ---- bouton conseil ---- */
 .advisor{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.6rem 0}
 .advisor form{margin:0}
+
+/* ---- filtres repliables ---- */
+.filterbox{margin:.6rem 0}
+.filterbox>summary{cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;
+  border:1px solid var(--line);border-radius:8px;padding:.45rem .8rem;
+  font-size:.86rem;color:var(--dim);background:var(--panel);list-style:none;
+  min-height:var(--tap)}
+.filterbox>summary::-webkit-details-marker{display:none}
+.filterbox>summary::marker{content:""}
+.filterbox>summary::after{content:"▾";font-size:.7rem}
+.filterbox[open]>summary{color:var(--fg);border-color:var(--line2)}
+.filterbox[open]>summary::after{content:"▴"}
+.filterbox .filters{margin-top:.5rem}
+.fgroup{display:inline-flex;gap:.35rem;align-items:center;flex-wrap:wrap}

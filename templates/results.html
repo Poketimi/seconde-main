@@ -75,12 +75,29 @@
 </div>
 {% endif %}
 
-<form class="filters" method="get">
+{# <details> ici est le bon outil : replié, il DOIT cacher son contenu.
+   Il reste ouvert dès qu'un filtre est actif, sinon on ne verrait pas
+   pourquoi la liste est réduite. #}
+<details class="filterbox" {{ 'open' if nfilters }}>
+  <summary>{{ 'Filtres · ' ~ nfilters ~ ' actif' ~ ('s' if nfilters > 1 else '')
+              if nfilters else 'Filtrer' }}</summary>
+  <form class="filters" method="get">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input name="fmin" type="number" step="any" value="{{ f.fmin or '' }}" placeholder="prix min">
   <input name="fmax" type="number" step="any" value="{{ f.fmax or '' }}" placeholder="prix max">
-  <input name="fmins" type="number" value="{{ f.fmins or '' }}" placeholder="max min">
-  <input name="floc" value="{{ f.floc or '' }}" placeholder="lieu">
+  <input name="floc" value="{{ f.floc or '' }}" placeholder="lieu (texte)">
+  <span class="fgroup">
+    <input name="fmins" type="number" value="{{ f.fmins or '' }}" placeholder="max min"
+           style="width:6rem">
+    <span class="faint">de</span>
+    <input name="forig" value="{{ f.forig or '' }}" placeholder="d'où ? (NPA ou ville)"
+           style="width:11rem">
+    <select name="fmode">
+      {% for m, lbl in (('car','voiture'),('transit','transports'),('bike','vélo'),('foot','à pied')) %}
+        <option value="{{ m }}" {{ 'selected' if (f.fmode or 'car') == m }}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+  </span>
   <select name="fsource"><option value="">toutes sources</option>
     {% for c in srcs %}<option value="{{ c }}" {{ 'selected' if f.fsource==c }}>{{ c }}</option>{% endfor %}</select>
   <select name="fship">
@@ -97,6 +114,10 @@
   <button>Filtrer</button>
   {% if nfilters %}<a class="btn" href="{{ url_for('results', sid=s.id, sort=sort) }}">✕ {{ nfilters }}</a>{% endif %}
 </form>
+  <p class="faint">Le trajet est estimé hors ligne (distance à vol d'oiseau, détour et
+    vitesse du mode) — pas de routage : sur des centaines d'annonces ce serait des
+    centaines d'appels. Une annonce sans lieu connu est gardée, pas écartée.</p>
+</details>
 <p class="faint">{{ rows|length }} annonce{{ 's' if rows|length != 1 }}</p>
 
 {% if not rows %}<p class="emptystate">Aucun match pour l'instant — le scan tourne en arrière-plan.</p>{% endif %}
@@ -115,7 +136,8 @@
         ⏱ {{ r.auction_end|until }}{% if r.bids is not none %} · <b>{{ r.bids }}</b> offre{{ 's' if r.bids != 1 }}{% endif %}</p>
     {% endif %}
     <p class="dim">{{ r.location_raw or '' }}
-      {% if r.travel_minutes is not none %} · <b>{{ r.travel_minutes|round|int }}min</b> {{ r.travel_mode }} de {{ r.travel_origin }}
+      {% if dist.get(r.listing_id) is not none %} · <b>{{ dist[r.listing_id]|round|int }}min</b> de {{ f.forig }} (estimé)
+      {% elif r.travel_minutes is not none %} · <b>{{ r.travel_minutes|round|int }}min</b> {{ r.travel_mode }} de {{ r.travel_origin }}
       {% elif r.travel_origin %} · {{ r.travel_origin }}{% endif %}</p>
     <div class="chips">
       <span class="chip">{{ r.source }}</span>

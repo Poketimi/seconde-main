@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 111 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 113 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -296,6 +296,21 @@ l'autre, et entièrement consultables, corrigeables et effaçables dans **Profil
 
 ---
 
+## Filtrer après coup
+
+Les filtres de la page de résultats sont **repliés** derrière un bouton, et s'ouvrent d'eux-
+mêmes dès qu'un filtre est actif — sinon on ne verrait pas pourquoi la liste est réduite.
+
+Parmi eux, **la distance se calcule au moment où tu filtres** : tu choisis un point de départ
+(NPA ou ville), un mode, un nombre de minutes. Le trajet enregistré dans `matches` n'existe
+que si la recherche avait des origines à sa création, et six des sept n'en ont pas — ce
+filtre-là marche partout.
+
+L'estimation est **hors ligne** (vol d'oiseau × facteur de détour ÷ vitesse du mode), sans
+routage : sur plusieurs centaines d'annonces, OSRM ferait autant d'appels. Une annonce dont
+le lieu est inconnu est **gardée**, pas écartée — elle n'est pas « loin », elle est inconnue.
+Un lieu de départ introuvable le dit et n'applique rien, plutôt que de vider la liste.
+
 ## Livrable ou pas
 
 Trois états, pas deux : **livrable**, **retrait sur place**, et **non précisé**. anibis,
@@ -505,7 +520,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 111 suites, sans réseau |
+| `test_core.py` | 113 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les
