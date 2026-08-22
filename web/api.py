@@ -4,7 +4,7 @@ from flask import (render_template, request, redirect, url_for,
                    jsonify, flash, abort, session, g)
 import db, geo, ai, sources, engine, config, browser, profile, sellers
 import reference, crawler, i18n, settings, auth, mailbox
-from .helpers import (get_or_404, safe_next, parse_origins, _save_targets,
+from .helpers import (ADVISOR, get_or_404, safe_next, parse_origins, _save_targets,
                       _state, _save_state, _run_bg, _run_one, _state_by_token,
                       _sparkline, SITE_DOMAINS, LOGIN_URLS)
 
@@ -29,11 +29,17 @@ def api_status():
                        (SELECT COUNT(*) FROM listings) l,
                        (SELECT COALESCE(MAX(created_at),0) FROM matches) last_m,
                        (SELECT COALESCE(MAX(last_run),0) FROM searches) last_run,
-                       (SELECT COUNT(*) FROM searches) s""", one=True)
+                       (SELECT COUNT(*) FROM searches) s,
+                       -- sinon un conseil qui arrive ne rafraîchit aucune page :
+                       -- il n'ajoute pas de match, il en annote
+                       (SELECT COUNT(*) FROM matches WHERE reco_rank IS NOT NULL) rc,
+                       (SELECT COUNT(*) FROM searches WHERE tweak_json IS NOT NULL) tw
+                       """, one=True)
     health = "|".join(f"{h['source']}:{h['status']}" for h in engine.health())
     login = browser.LOGIN_STATE
     return jsonify({
-        "v": f"{r['m']}-{r['l']}-{r['s']}-{int(r['last_m'])}-{int(r['last_run'])}-{health}",
+        "v": f"{r['m']}-{r['l']}-{r['s']}-{int(r['last_m'])}-{int(r['last_run'])}"
+             f"-{r['rc']}-{r['tw']}-{health}-{ADVISOR.get('busy') or ''}",
         "matches": r["m"], "listings": r["l"],
         "login_running": bool(login.get("running")),
         "login_site": login.get("site"), "login_message": login.get("message"),

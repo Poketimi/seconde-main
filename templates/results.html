@@ -25,6 +25,20 @@
   {% endfor %}
 </div>
 
+<div class="advisor">
+  {% if advising %}
+    <span class="spin"></span>
+    <span>L'assistant regarde le lot — quelques dizaines de secondes.</span>
+  {% else %}
+    <form method="post" action="{{ url_for('ask_advisor', sid=s.id) }}">
+      <button class="{{ '' if picks else 'cta' }}">
+        {{ 'Redemander un avis' if picks else 'Demander un avis' }}</button>
+    </form>
+    <span class="faint">{{ 'Le lot a peut-être changé depuis.' if picks
+       else "Quelles annonces valent le coup d'œil, et le réglage est-il bon ?" }}</span>
+  {% endif %}
+</div>
+
 {% if tweak %}
 <div class="tweak">
   <div class="tweak-head">Un réglage à revoir ?</div>

@@ -406,3 +406,7 @@ button[data-busy]{opacity:.6}
 .tweak-head{font-weight:580;font-size:.92rem;color:var(--gold)}
 .tweak .kv{margin:.5rem 0}
 .tweak s{text-decoration:line-through}
+
+/* ---- bouton conseil ---- */
+.advisor{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.6rem 0}
+.advisor form{margin:0}

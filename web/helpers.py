@@ -211,3 +211,8 @@ def admin_only():
         return None
     flash("Réservé à l'administrateur.")
     return redirect(url_for("index"))
+
+
+# Quelle recherche est en train d'être conseillée. Un seul conseil à la fois :
+# l'appel coûte 30 à 60 s et rien ne justifie d'en lancer trois en parallèle.
+ADVISOR = {"busy": None}

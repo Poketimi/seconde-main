@@ -4,7 +4,7 @@ from flask import (render_template, request, redirect, url_for,
                    jsonify, flash, abort, session, g)
 import db, geo, ai, sources, engine, config, browser, profile, sellers
 import reference, crawler, i18n, settings, auth, mailbox
-from .helpers import (me, mine, admin_only, owned_or_404,
+from .helpers import (ADVISOR, me, mine, admin_only, owned_or_404,
                       get_or_404, safe_next, parse_origins, _save_targets,
                       _state, _save_state, _run_bg, _run_one, _state_by_token,
                       _sparkline, SITE_DOMAINS, LOGIN_URLS)
@@ -140,6 +140,7 @@ def results(sid):
     return render_template("results.html", s=s, rows=rows, log=log,
                            origins=json.loads(s["origins"] or "[]"),
                            picks=picks, reco_summary=reco_summary, tweak=tweak,
+                           advising=(ADVISOR['busy'] == sid),
                            sort=request.args.get("sort", "score"),
                            srcs=srcs, f=f, nfilters=len(where))
 
@@ -215,4 +216,32 @@ def apply_tweak(sid):
     db.run("UPDATE searches SET tweak_json=NULL, reco_key=NULL WHERE id=?", (sid,))
     flash("Recherche ajustée — " + " · ".join(changed) + ". Nouveau scan lancé.")
     threading.Thread(target=_run_one, args=(sid,), daemon=True).start()
+    return redirect(url_for("results", sid=sid))
+
+
+@app.post("/search/<int:sid>/conseil")
+def ask_advisor(sid):
+    """Demander un avis maintenant, sans attendre le prochain scan.
+
+    Le conseil part normalement après un scan qui a changé quelque chose. Ce
+    bouton le force : utile quand on regarde une liste et qu'on veut un avis
+    tout de suite, ou après avoir modifié ses filtres.
+    """
+    s = owned_or_404(sid)
+    if ADVISOR["busy"]:
+        flash("Un avis est déjà en cours de préparation.")
+        return redirect(url_for("results", sid=sid))
+
+    def job():
+        try:
+            fresh = db.q("SELECT * FROM searches WHERE id=?", (sid,), one=True)
+            ai.recommend(fresh, force=True)
+        except Exception as e:
+            print("advisor failed:", e)
+        finally:
+            ADVISOR["busy"] = None
+
+    ADVISOR["busy"] = sid
+    threading.Thread(target=job, daemon=True).start()
+    flash("L'assistant regarde le lot — la page se mettra à jour toute seule.")
     return redirect(url_for("results", sid=sid))

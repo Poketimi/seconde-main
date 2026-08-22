@@ -26,7 +26,7 @@ Puis va sur **Réglages** et branche un service d'IA en un clic. Sans IA l'app t
 même, en repli mots-clés — plus grossier, mais fonctionnel.
 
 ```bash
-python3 test_core.py       # 110 suites, sans réseau, sur une base jetable
+python3 test_core.py       # 111 suites, sans réseau, sur une base jetable
 ```
 
 ---
@@ -267,6 +267,12 @@ Un ajustement ne peut toucher que **requête, prix max et mots exclus** — orig
 et type de vendeur restent ta décision — et ne peut qu'**élargir** : un plafond proposé à la
 baisse est rejeté d'office.
 
+**Un bouton pour le demander tout de suite.** « Demander un avis » sur la page de
+résultats force l'analyse sans attendre le prochain scan — utile quand on regarde une liste,
+ou juste après avoir changé ses filtres. Un seul avis à la fois : l'appel coûte 30 à 60 s, et
+un second clic pendant ce temps ne relance rien. La page se met à jour toute seule quand il
+arrive.
+
 **Un appel par scan, et seulement si le lot a bougé.** Une empreinte des annonces et de
 leurs prix est gardée : un cycle qui ne trouve rien de neuf ne coûte rien. Le modèle se
 règle comme les autres dans le tableau de `/reglages` (travail « reco »). Un identifiant
@@ -499,7 +505,7 @@ marcher tels quels.
 | `browser.py` | Chromium connecté, pour Facebook uniquement |
 | `mailbox.py` | alertes e-mail IMAP (leboncoin) |
 | `i18n.py` · `settings.py` · `auth.py` · `geo.py` · `db.py` · `net.py` · `reference.py` · `sellers.py` | un sujet chacun |
-| `test_core.py` | 110 suites, sans réseau |
+| `test_core.py` | 111 suites, sans réseau |
 
 `web/_router.py` mérite un mot : découper en blueprints Flask aurait renommé tous
 les endpoints (`url_for('index')` → `url_for('searches.index')`), cassant les

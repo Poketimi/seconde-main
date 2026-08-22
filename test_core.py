@@ -2380,6 +2380,46 @@ def test_scoring_prompt_treats_a_shared_brand_as_no_evidence():
          "category": "winterSports"}, 0)
     assert b["cat"] == "winterSports", "la catégorie du site n'est pas transmise"
 
+def test_advisor_button_runs_on_demand_and_is_visible_when_it_lands():
+    """Le conseil part normalement après un scan. Le bouton le force.
+
+    Deux pièges : deux clics ne doivent pas lancer deux appels à 30-60 s, et
+    l'empreinte de /api/status doit bouger quand un conseil arrive — sinon il
+    n'ajoute aucun match, donc aucune page ne se rafraîchit et le résultat
+    reste invisible jusqu'au prochain rechargement manuel.
+    """
+    import app
+    from web.helpers import ADVISOR
+    from ai import reco as R
+    s, ids = _reco_fixture()
+    c = app.app.test_client()
+
+    before = c.get("/api/status").get_json()["v"]
+    db.run("UPDATE matches SET reco_rank=1, reco_why='parce que' WHERE listing_id=?",
+           (ids[0],))
+    after = c.get("/api/status").get_json()["v"]
+    assert before != after, "un conseil qui arrive ne réveille aucune page"
+    db.run("UPDATE matches SET reco_rank=NULL, reco_why=NULL WHERE listing_id=?", (ids[0],))
+
+    html = c.get(f"/search/{s['id']}").get_data(as_text=True)
+    assert "conseil" in html and "Demander un avis" in html, "pas de bouton"
+
+    # un conseil déjà en cours ne se relance pas
+    ADVISOR["busy"] = s["id"]
+    try:
+        calls = []
+        real = R.recommend
+        R.recommend = lambda *a, **k: calls.append(1)
+        try:
+            c.post(f"/search/{s['id']}/conseil")
+        finally:
+            R.recommend = real
+        assert not calls, "un second clic a relancé un appel de 30 à 60 s"
+        busy_html = c.get(f"/search/{s['id']}").get_data(as_text=True)
+        assert "regarde le lot" in busy_html, "l'état en cours n'est pas montré"
+    finally:
+        ADVISOR["busy"] = None
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
