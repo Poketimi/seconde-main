@@ -200,6 +200,12 @@ dernier passage sans jamais parcourir le corpus entier.
 
 ## 8. Les pièges déjà rencontrés
 
+- **La plupart des sites font un ET sur tous les mots.** Un seul mot que le
+  vendeur n'a pas écrit et la requête ne remonte rien : « Peak design 30l V2 »
+  ne trouvait rien sur anibis alors que l'annonce y était, titrée « Peak Design
+  Everyday Backpack 30L ». `sources.search()` retente donc **une fois** sans le
+  dernier mot quand la première tentative est vide. Élargir est sans risque —
+  la précision vient après, de `keyword_score`, `matches_target` et du tri IA.
 - **Cherche le champ avant de deviner.** « Est-ce que le vendeur envoie ? » avait
   l'air absent de l'API leboncoin — il est dans `attributes["shippable"]`, avec
   l'état, le transporteur et la taille du colis. Scanner la description aurait

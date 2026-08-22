@@ -2297,6 +2297,45 @@ def test_empty_search_gets_a_diagnosis_once_per_configuration():
     finally:
         R.chat = real
 
+def test_a_query_that_finds_nothing_is_retried_one_word_shorter():
+    """La plupart des sites font un ET sur tous les mots.
+
+    « Peak design 30l V2 » ne remontait rien sur anibis alors que l'annonce y
+    était : son titre dit « Peak Design Everyday Backpack 30L », sans « V2 ».
+    Le même sac notait 75/100 à nos filtres locaux — il n'a jamais été rejeté,
+    il n'a jamais été récupéré.
+    """
+    from sources import registry as R
+    assert R.trimmed("Peak design 30l V2") == "Peak design 30l"
+    assert R.trimmed("velo") is None, "deux mots ou moins : rien à retirer"
+    assert R.trimmed("") is None and R.trimmed(None) is None
+
+    seen = []
+    def fake(query, spec=None):
+        seen.append(query)
+        return [{"url": "https://x/1", "source": "faux", "title": "Peak Design 30L"}] \
+            if query == "peak design 30l" else []
+    R.ADAPTERS["faux"] = fake
+    try:
+        rows = R.search("faux", "peak design 30l v2")
+        assert len(rows) == 1, "la requête raccourcie n'a pas été tentée"
+        assert seen == ["peak design 30l v2", "peak design 30l"], seen
+        st, det = R.LAST_STATUS["faux"]
+        assert st == "ok" and "élargie" in det, (st, det)
+
+        # une requête qui marche du premier coup ne coûte pas de seconde requête
+        seen.clear()
+        R.search("faux", "peak design 30l")
+        assert seen == ["peak design 30l"], f"requête inutile : {seen}"
+
+        # et si le raccourci ne donne rien non plus, on s'arrête là
+        seen.clear()
+        R.search("faux", "objet totalement introuvable")
+        assert len(seen) == 2, f"une seule nouvelle tentative attendue : {seen}"
+    finally:
+        R.ADAPTERS.pop("faux", None)
+        R.LAST_STATUS.pop("faux", None)
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -107,7 +107,27 @@ def verify_markets(leads, workers=6):
         out.append({**lead, "status": status, "detail": detail})
     return out
 
-def search(source, query, spec=None):
+# La plupart des sites font un ET sur tous les mots de la requête. Un seul mot
+# que le vendeur n'a pas écrit suffit alors à ne rien remonter : « Peak design
+# 30l V2 » ne trouvait rien sur anibis, alors que l'annonce y était — son titre
+# dit « Peak Design Everyday Backpack 30L », sans « V2 ». Le même sac notait 75
+# sur 100 à nos filtres locaux.
+#
+# Quand la requête complète ne donne rien, on retente une fois en retirant le
+# dernier mot. Élargir est sans risque : la précision est assurée après coup par
+# keyword_score, matches_target et le tri IA. Une seule tentative, parce que
+# chaque requête coûte un délai de politesse.
+MIN_TOKENS_TO_TRIM = 3
+
+def trimmed(query):
+    """La requête moins son dernier mot, ou None s'il n'y a rien à retirer."""
+    words = (query or "").split()
+    if len(words) < MIN_TOKENS_TO_TRIM:
+        return None
+    return " ".join(words[:-1])
+
+
+def search(source, query, spec=None, _retry=True):
     """Run an adapter and record WHY it returned nothing.
 
     An empty list is ambiguous -- no stock, blocked, or signed out -- and the
@@ -123,6 +143,14 @@ def search(source, query, spec=None):
         LAST_STATUS[source] = ("error", f"{type(e).__name__}: {e}"[:200])
         print(f"  [{source}] adapter error: {type(e).__name__}: {e}")
         return []
+    if not rows and _retry:
+        shorter = trimmed(query)
+        if shorter:
+            again = search(source, shorter, spec, _retry=False)
+            if again:
+                LAST_STATUS[source] = ("ok", f"{len(again)} annonces "
+                                             f"(requête élargie : « {shorter} »)")
+                return again
     if rows:
         LAST_STATUS[source] = ("ok", f"{len(rows)} annonces")
     elif source in NEEDS_BROWSER:
